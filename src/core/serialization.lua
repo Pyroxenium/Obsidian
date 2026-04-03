@@ -22,7 +22,6 @@ function Serialization.pack(scene)
         }
     end
 
-    -- 2. Statische Elemente
     for _, item in ipairs(scene.staticElements) do
         table.insert(data.statics, {
             spritePath = item.spritePath,
@@ -71,7 +70,6 @@ function Serialization.save(scene, path)
 end
 
 function Serialization.apply(scene, data)
-    -- Clear existing entities before populating from saved data
     local toDestroy = {}
     for id in pairs(scene.entities) do
         toDestroy[#toDestroy + 1] = id
@@ -80,7 +78,6 @@ function Serialization.apply(scene, data)
         scene:destroyEntity(id)
     end
 
-    -- Clear statics, tilemap, and spatial data
     scene.staticElements = {}
     scene.foregroundElements = {}
     scene.tilemap = nil

@@ -1,27 +1,20 @@
 -- Obsidian Error Handler
 -- Displays a panic screen with stack trace on unhandled errors.
 -- Override Error.handler via Engine.onError(fn) to implement custom error handling.
+local logger = require("core.logger")
 
 local Error = {
-    handler    = nil,  -- set via Engine.onError(fn)
+    handler    = nil,
     _shouldStop = false
 }
 
 local function writeLog(msg)
-    pcall(function()
-        local f = fs.open("obsidian_crash.log", "w")
-        if f then
-            if os.date then f.writeLine(os.date()) end
-            f.writeLine(msg)
-            f.close()
-        end
-    end)
+   logger.error("[PANIC] " .. msg)
 end
 
 local function drawPanic(msg)
     writeLog(msg)
 
-    -- Split error message from stack traceback for separate styling
     local mainMsg, trace = msg, nil
     local splitPos = msg:find("\nstack traceback:")
     if splitPos then
@@ -33,7 +26,6 @@ local function drawPanic(msg)
     term.setBackgroundColor(colors.black)
     term.clear()
 
-    -- Header
     term.setBackgroundColor(colors.red)
     term.setCursorPos(1, 1)
     term.clearLine()
@@ -43,7 +35,6 @@ local function drawPanic(msg)
     term.write(title)
     term.setBackgroundColor(colors.black)
 
-    -- Error message (yellow)
     local y = 3
     term.setTextColor(colors.yellow)
     for line in mainMsg:gmatch("[^\n]+") do
@@ -53,7 +44,6 @@ local function drawPanic(msg)
         y = y + 1
     end
 
-    -- Stack trace
     if trace and y < h - 2 then
         y = y + 1
         if y <= h - 2 then
@@ -65,7 +55,6 @@ local function drawPanic(msg)
         for line in trace:gmatch("[^\n]+") do
             if y > h - 2 then break end
             if line ~= "stack traceback:" then
-                -- Engine-internal frames shown in gray, user code shown in white
                 local isInternal = line:find("/core/")
                     or line:find("engine%.lua")
                     or line:find("error%.lua")
@@ -83,15 +72,13 @@ local function drawPanic(msg)
     term.setTextColor(colors.white)
     term.setCursorPos(1, h)
     term.clearLine()
-    local footer = " Press any key to exit  |  crash saved to obsidian_crash.log "
+    local footer = " Press any key to exit  |  crash saved to obsidian.log "
     term.setCursorPos(math.max(1, math.floor((w - #footer) / 2) + 1), h)
     term.write(footer:sub(1, w))
 
     os.pullEvent("key")
 end
 
--- Reports an error. Calls the custom handler if set, otherwise shows the built-in
--- panic screen. Either way, sets _shouldStop = true so the engine exits cleanly.
 function Error.report(msg, trace)
     local fullMsg
     if trace and #tostring(trace) > 0 then

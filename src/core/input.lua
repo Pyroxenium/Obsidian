@@ -31,11 +31,9 @@ function input._update(event, p1, p2, p3)
     end
 end
 
--- Called once per frame after all updates to snapshot the current state.
 function input._endFrame()
     for k, v in pairs(input.keysDown)  do input.keysDownPrevious[k]  = v end
     for k, v in pairs(input.mouseDown) do input.mouseDownPrevious[k] = v end
-    -- Clear keys that are no longer held so stale "just pressed" states don't persist
     for k in pairs(input.keysDownPrevious) do
         if not input.keysDown[k] then input.keysDownPrevious[k] = nil end
     end
@@ -56,13 +54,11 @@ function input.isKeyDown(key)
     return input.keysDown[key] == true
 end
 
--- True only on the first frame the key is pressed.
 function input.isJustPressed(key)
     if type(key) == "string" then key = keys[key] end
     return input.keysDown[key] == true and not (input.keysDownPrevious[key] == true)
 end
 
--- True only on the first frame the key is released.
 function input.isJustReleased(key)
     if type(key) == "string" then key = keys[key] end
     return not (input.keysDown[key] == true) and input.keysDownPrevious[key] == true

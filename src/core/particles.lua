@@ -26,7 +26,6 @@ function particles.createEmitter(config)
     }
 end
 
--- Lädt eine Emitter-Konfiguration über den Loader und erstellt sofort ein Laufzeit-Objekt
 function particles.load(path)
     local config = loader.loadEmitter(path)
     if not config then return nil end
@@ -145,7 +144,6 @@ function particles.cleanupSystem(scene)
     end
 end
 
--- Convenience: registers all four particle systems on a scene in the correct order.
 function particles.registerAll(scene)
     scene:addSystem({"emitter", "pos"},                        particles.emitterSystem(scene))
     scene:addSystem({"pos", "velocity", "isParticle"},          particles.motionSystem(scene))

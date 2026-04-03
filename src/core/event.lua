@@ -26,12 +26,10 @@ function Event.once(eventName, callback)
     return unsubscribe
 end
 
--- Removes all listeners for an event.
 function Event.offAll(eventName)
     listeners[eventName] = nil
 end
 
--- Backward-compatible alias.
 Event.off = Event.offAll
 
 function Event.emit(eventName, ...)

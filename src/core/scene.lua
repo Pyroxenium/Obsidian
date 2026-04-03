@@ -8,7 +8,6 @@ local mathUtils   = require("core.math")
 local uiModule    = require("core.ui")
 local errorModule = require("core.error")
 
--- Capture Lua's native debug library before the local `debug` variable above shadows it
 local _luaDebug = _G and _G.debug
 
 local function tracebackHandler(e)
@@ -38,7 +37,7 @@ function Scene.new()
     self.camera = mathUtils.vec2(0, 0)
     self.lastCam = mathUtils.vec2(0, 0)
     self.staticElements = {}
-    self.memory = {} -- Globaler Speicher für szenenweite Daten (Score, Timer, etc.)
+    self.memory = {}
     self.staticCache = { t = {}, f = {}, b = {} }
     self.foregroundElements = {}
     self.ui = uiModule.createContext()
@@ -94,7 +93,6 @@ function Scene.new()
         return id
     end
 
-    -- Bindet eine Entity an eine andere (mit optionalem Offset)
     function self:setParent(childId, parentId, offsetX, offsetY)
         self:setComponent(childId, "parent", { id = parentId, offset = mathUtils.vec2(offsetX or 0, offsetY or 0) })
     end
@@ -472,7 +470,6 @@ function Scene.new()
     function self:update(dt)
         self:updateDynamicGrid()
 
-        -- 1. Parenting System: Kind-Positionen basierend auf Eltern berechnen
         local children = self:query("pos", "parent")
         for _, id in ipairs(children) do
             local pData = self.components.parent[id]
@@ -580,12 +577,29 @@ function Scene.new()
                 local endX = math.floor((totalCamX + termW) / tm.tileW) + 1
                 local endY = math.floor((totalCamY + termH) / tm.tileH) + 1
 
-                for ty = startY, endY do
-                    if tm.data[ty] then
-                        for tx = startX, endX do
-                            local tid = tm.data[ty][tx]
-                            if tid and tid > 0 and tm.sprite[tid] then
-                                buffer.drawSprite(tm.sprite[tid], (tx-1)*tm.tileW, (ty-1)*tm.tileH, totalCamX, totalCamY)
+                -- Multi-layer path (Engine.tilemap)
+                if tm.layers then
+                    for _, layer in ipairs(tm.layers) do
+                        for ty = startY, endY do
+                            if layer.data[ty] then
+                                for tx = startX, endX do
+                                    local tid = layer.data[ty][tx]
+                                    if tid and tid > 0 and tm.sprite[tid] then
+                                        buffer.drawSprite(tm.sprite[tid], (tx-1)*tm.tileW, (ty-1)*tm.tileH, totalCamX, totalCamY)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                else
+                    -- Legacy single-layer path (scene:setTilemap)
+                    for ty = startY, endY do
+                        if tm.data[ty] then
+                            for tx = startX, endX do
+                                local tid = tm.data[ty][tx]
+                                if tid and tid > 0 and tm.sprite[tid] then
+                                    buffer.drawSprite(tm.sprite[tid], (tx-1)*tm.tileW, (ty-1)*tm.tileH, totalCamX, totalCamY)
+                                end
                             end
                         end
                     end

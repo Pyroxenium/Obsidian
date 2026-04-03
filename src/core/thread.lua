@@ -42,8 +42,6 @@ function Thread.update(...)
             if t.filter == event[1] or t.filter == nil then
                 local ok, result = coroutine.resume(t.co, table.unpack(event))
                 if not ok then
-                    -- Fallback: xpcall wrapper should catch everything first,
-                    -- but handle raw coroutine errors just in case.
                     if Thread.errorHandler then
                         Thread.errorHandler(result)
                     else

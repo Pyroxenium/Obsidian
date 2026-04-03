@@ -29,8 +29,12 @@ Engine.input = require("core.input")
 Engine.loader = require("core.loader")
 Engine.inputMapper = require("core.input_mapper")
 Engine.ui = require("core.ui")
-Engine.tween = require("core.tween")
-Engine.event = require("core.event")
+Engine.tween   = require("core.tween")
+Engine.timer   = require("core.timer")
+Engine.fsm     = require("core.fsm")
+Engine.camera  = require("core.camera")
+Engine.tilemap = require("core.tilemap")
+Engine.event   = require("core.event")
 Engine.logger = require("core.logger")
 Engine.math = require("core.math")
 Engine.physics = require("core.physics")
@@ -39,7 +43,9 @@ Engine.ai = require("core.ai")
 Engine.pathfinding = require("core.pathfinding")
 Engine.serialization = require("core.serialization")
 Engine.network = require("core.network")
+Engine.server = require("core.server")
 Engine.storage = require("core.storage")
+Engine.db = require("core.db")
 Engine.particles = require("core.particles")
 local debug       = require("core.debug")
 local errorModule = require("core.error")
@@ -88,6 +94,7 @@ function Engine.setScene(scene)
     Engine.tween.stopAll()
     errorModule._shouldStop = false
     activeScene = scene
+    Engine.scene.activeScene = scene
 
     if activeScene and activeScene.onLoad then
         activeScene:onLoad()
@@ -176,6 +183,7 @@ function Engine.start()
             lastDeltaTime = sum / #dtHistory
 
             Engine.tween.update(lastDeltaTime)
+            Engine.timer.update(lastDeltaTime)
 
             if activeScene then activeScene:update(lastDeltaTime) end
 

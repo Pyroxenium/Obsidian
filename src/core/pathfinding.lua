@@ -164,7 +164,7 @@ function Pathfinding.findPath(scene, startPos, endPos, collider, ignoreId, layer
                 end
             end
         end
-        end -- stale-entry else
+        end
     end
 
     return nil
