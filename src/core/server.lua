@@ -2,54 +2,99 @@
 -- High-level server abstraction built on top of network.lua
 -- Greatly simplifies building dedicated servers with Obsidian.
 
+---@diagnostic disable: undefined-global
+
 local logger  = require("core.logger")
-local event   = require("core.event")
 local network = require("core.network")
 local buffer  = require("core.buffer")
 
+--- Network packet structure
+---@class NetworkPacket
+---@field type string Message type identifier
+---@field data table Arbitrary message data payload
+---@field sender number Computer ID of the sender
+---@field timestamp number Epoch time in milliseconds when the packet was sent
+
+--- Server client object structure
+---@class ServerClient
+---@field id number Computer ID
+---@field meta table Arbitrary metadata
+---@field joinedAt number Timestamp (epoch seconds)
+---@field lastSeen number Timestamp of last activity
+---@field ping number|nil Last measured RTT in ms
+---@field heartbeatSent number|nil Timestamp when last PING was sent
+---@field lastSeq number Last processed sequence number
+
+--- Server profile object structure
+---@class ServerProfile
+---@field cid number Client ID
+---@field name string Player name
+---@field passwordHash string DJB2 hash of the player's password (stored but never sent to clients)
+---@field class string|nil Optional player class/type for game-specific logic
+
+--- Server console object structure
+---@class ServerConsole
+---@field enabled boolean Whether the console is enabled and should be rendered
+---@field title string Title shown in the console header
+---@field maxEntries number Maximum number of log entries to keep in memory
+---@field log table[] Raw log entries with timestamp, prefix, raw text, and color
+---@field lines table[] Pre-wrapped lines for display, with text and color
+---@field lastWidth number Last known terminal width (for detecting resize)
+---@field lastHeight number Last known terminal height (for detecting resize)
+---@field startTime number|nil Timestamp when the console was enabled (for uptime display)
+---@field dirty boolean Flag indicating whether the console needs to be re-rendered
+---@field buf BufferInstance|nil Buffer instance used for rendering the console, created lazily
+
+--- This module provides a high-level server abstraction built on top of network.lua, making it easy to build dedicated servers with Obsidian. It includes client management, message handling, rooms, a built-in auth system, and an optional server console for logging and monitoring.
+---@class ServerModule
 local server = {}
+
+---@type fun(event: string, ...: any)
+server._emit = function() end
 
 -- ─── Internal State ───────────────────────────────────────────────────────────
 
-local _clients     = {}   -- [id] = { id, meta, joinedAt, lastSeen, ping, heartbeatSent, lastSeq }
-local _rooms       = {}   -- [roomName] = { [clientId] = true }
-local _handlers    = {}   -- [msgType]  = fn(clientId, data, packet)
-local _middleware  = {}   -- list of fn(clientId, packet, next)
-local _tickCbs     = {}   -- list of fn(dt)
-local _onConnectCb    = nil
+local _clients = {}   -- [id] = { id, meta, joinedAt, lastSeen, ping, heartbeatSent, lastSeq }
+local _rooms = {}   -- [roomName] = { [clientId] = true }
+local _handlers = {}   -- [msgType]  = fn(clientId, data, packet)
+local _middleware = {}   -- list of fn(clientId, packet, next)
+local _tickCbs = {}   -- list of fn(dt)
+local _onConnectCb = nil
 local _onDisconnectCb = nil
-local _running     = false
-local _protocol    = nil
-local _hostname    = nil
-local _tickRate    = 20
-local _timeout     = 30   -- seconds until a client is considered timed out (0 = off)
-local _heartbeat   = 5    -- send a PING every N seconds (0 = off)
-local _seqEnabled  = false -- enable per-client sequence number dedup
+local _running = false
+local _protocol = nil
+local _hostname = nil
+local _tickRate = 20
+local _timeout = 30   -- seconds until a client is considered timed out (0 = off)
+local _heartbeat = 5    -- send a PING every N seconds (0 = off)
+local _seqEnabled = false -- enable per-client sequence number dedup
 
 -- ─── Server Console ───────────────────────────────────────────────────────────
 
+---@type ServerConsole
 local _con = {
-    enabled    = false,
-    title      = "Obsidian Server",
+    enabled = false,
+    title = "Obsidian Server",
     maxEntries = 200,
-    log        = {},
-    lines      = {},
-    lastWidth  = 0,
+    log = {},
+    lines = {},
+    lastWidth = 0,
     lastHeight = 0,
-    startTime  = nil,
-    dirty      = true,
+    startTime = nil,
+    dirty = true,
+    buf = nil,   -- Buffer instance, created lazily on first render
 }
 
 -- Colour palette for log levels
 local CON_LEVEL = {
-    info    = { fore = "0", prefix = "[INFO ] " },
-    warn    = { fore = "1", prefix = "[WARN ] " },
-    error   = { fore = "e", prefix = "[ERROR] " },
+    info = { fore = "0", prefix = "[INFO ] " },
+    warn = { fore = "1", prefix = "[WARN ] " },
+    error = { fore = "e", prefix = "[ERROR] " },
     success = { fore = "d", prefix = "[OK   ] " },
-    system  = { fore = "b", prefix = "[SYS  ] " },
+    system = { fore = "b", prefix = "[SYS  ] " },
+    debug = { fore = "7", prefix = "[DEBUG] " },
 }
 
--- Continuation lines start at column 1 (no indent)
 local CON_PREFIX_W = 0
 
 local function _conTimestamp()
@@ -57,16 +102,13 @@ local function _conTimestamp()
     return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
 end
 
--- Word-wrap a single string to `width` columns.
--- Continuation lines are indented by `indentW` spaces.
 local function _wrapText(fullLine, width, indentW)
     if width <= 0 or #fullLine <= width then return { fullLine } end
-    local result  = {}
-    local indent  = string.rep(" ", indentW)
+    local result = {}
+    local indent = string.rep(" ", indentW)
     local remaining = fullLine
     while #remaining > width do
         local cut = width
-        -- search backwards for a space to soft-break at
         for i = width, indentW + 1, -1 do
             if remaining:sub(i, i) == " " then
                 cut = i - 1
@@ -83,7 +125,6 @@ local function _wrapText(fullLine, width, indentW)
     return result
 end
 
--- Rebuild all wrapped display lines from the raw log at the given width.
 local function _rebuildLines(width)
     _con.lines = {}
     for _, entry in ipairs(_con.log) do
@@ -95,23 +136,21 @@ local function _rebuildLines(width)
     _con.lastWidth = width
 end
 
-local function _conPush(text, level)
+local function _consolePush(text, level)
     level = CON_LEVEL[level] or CON_LEVEL.info
     local entry = {
-        ts     = _conTimestamp(),
+        ts = _conTimestamp(),
         prefix = level.prefix,
-        raw    = tostring(text),
-        fore   = level.fore,
+        raw = tostring(text),
+        fore = level.fore,
     }
     table.insert(_con.log, entry)
     if #_con.log > _con.maxEntries then
         table.remove(_con.log, 1)
-        -- full rebuild needed since we dropped the oldest entry
         if _con.lastWidth > 0 then
             _rebuildLines(_con.lastWidth)
         end
     else
-        -- incremental: just append the new wrapped lines
         if _con.lastWidth > 0 then
             local full = entry.ts .. "  " .. entry.prefix .. entry.raw
             for _, wl in ipairs(_wrapText(full, _con.lastWidth, CON_PREFIX_W)) do
@@ -122,96 +161,84 @@ local function _conPush(text, level)
     _con.dirty = true
 end
 
-local function _conRender()
+local function _consoleRender()
     if not _con.enabled or not _con.dirty then return end
     _con.dirty = false
 
     local sw, sh = term.getSize()
     if sw == 0 or sh == 0 then return end
 
-    -- Rebuild wrap table whenever terminal width changes
-    if sw ~= _con.lastWidth then
-        _rebuildLines(sw)
-        _con.lastWidth  = sw
+    if not _con.buf then
+        _con.buf = buffer.new(sw, sh)
+        _con.lastWidth = sw
+        _con.lastHeight = sh
+    elseif sw ~= _con.lastWidth or sh ~= _con.lastHeight then
+        _con.buf:setSize(sw, sh)
+        _con.lastWidth = sw
         _con.lastHeight = sh
     end
 
-    -- Draw directly to the terminal — no buffer cache, so resize always gives
-    -- a clean full redraw without dirty-check mismatches.
-
-    -- Helper: write a full-width line at row y
-    local function drawLine(y, text, fore, back)
-        -- pad / truncate to exact terminal width
-        if #text < sw then
-            text = text .. string.rep(" ", sw - #text)
-        elseif #text > sw then
-            text = text:sub(1, sw)
-        end
-        local f = string.rep(fore, sw)
-        local b = string.rep(back, sw)
-        term.setCursorPos(1, y)
-        term.blit(text, f, b)
+    if sw ~= _con.lastWidth then
+        _rebuildLines(sw)
     end
 
-    -- Header (row 1)
+    local buf = _con.buf
     local uptime = ""
     if _con.startTime then
         local secs = math.floor(os.epoch("utc") / 1000 - _con.startTime)
-        local m    = math.floor(secs / 60)
-        local s    = secs % 60
+        local m = math.floor(secs / 60)
+        local s = secs % 60
         uptime = string.format("up %dm%02ds", m, s)
     end
-    local right  = string.format("ID:%-3d  %s ", os.getComputerID(), uptime)
+    local right = string.format("ID:%-3d  %s ", os.getComputerID(), uptime)
     local header = (" " .. _con.title .. string.rep(" ", sw)):sub(1, sw - #right) .. right
-    drawLine(1, header, "f", "5")
+    buf:drawLine(1, header, "f", "5")
 
-    -- Status bar (last row)
-    local proto    = _protocol or "(no protocol)"
+    local proto = _protocol or "(no protocol)"
     local nClients = 0
     for _ in pairs(_clients) do nClients = nClients + 1 end
     local status = string.format(" proto: %-20s  clients: %d", proto, nClients)
-    drawLine(sh, status, "0", "8")
+    buf:drawLine(sh, status, "0", "8")
 
-    -- Log area (rows 2 .. sh-1)
-    local logH     = sh - 2
+    local logH = sh - 2
     local startIdx = math.max(1, #_con.lines - logH + 1)
-    local row      = 2
+    local row = 2
 
-    -- Render visible log lines
     for i = startIdx, math.min(startIdx + logH - 1, #_con.lines) do
         local line = _con.lines[i]
-        drawLine(row, line.text, line.fore, "f")
+        buf:drawLine(row, line.text, line.fore, "f")
         row = row + 1
     end
 
-    -- Fill remaining empty log rows with blanks
     while row < sh do
-        drawLine(row, "", "f", "f")
+        buf:drawLine(row, "", "0", "f")
         row = row + 1
     end
+
+    buf:present()
 end
 
 --- Enable the server console. Call before server.run().
--- @param title  Optional title string shown in the header.
+---@param title? string Optional title string shown in the header.
 function server.showConsole(title)
     _con.enabled = true
     if title then _con.title = title end
 end
 
 --- Write a line to the server console.
--- @param text   Message string.
--- @param level  One of: "info", "warn", "error", "success", "system" (default: "info")
-function server.print(text, level)
-    _conPush(tostring(text), level or "info")
+---@param text any Message to log.
+---@param level? "info"|"warn"|"error"|"success"|"system"|"debug"
+function server.log(text, level)
+    _consolePush(tostring(text), level or "info")
 end
 
 -- ─── Packet Helpers ───────────────────────────────────────────────────────────
 
 local function makePacket(msgType, data)
     return {
-        type      = msgType,
-        data      = data or {},
-        sender    = os.getComputerID(),
+        type = msgType,
+        data = data or {},
+        sender = os.getComputerID(),
         timestamp = os.epoch("utc"),
     }
 end
@@ -219,6 +246,7 @@ end
 -- ─── Client Management ────────────────────────────────────────────────────────
 
 --- Returns all currently connected client IDs as a list.
+---@return number[] list List of connected client IDs
 function server.getClients()
     local list = {}
     for id in pairs(_clients) do
@@ -228,6 +256,7 @@ function server.getClients()
 end
 
 --- Returns the number of connected clients.
+---@return number count Count of connected clients
 function server.clientCount()
     local n = 0
     for _ in pairs(_clients) do n = n + 1 end
@@ -235,11 +264,16 @@ function server.clientCount()
 end
 
 --- Returns true if the given client ID is connected.
+---@param clientId number Client ID to check
+---@return boolean isConnected True if the client is currently connected, false otherwise
 function server.isConnected(clientId)
     return _clients[clientId] ~= nil
 end
 
 --- Store arbitrary key/value metadata on a connected client.
+---@param clientId number Client ID of the client
+---@param key string Metadata key
+---@param value any Metadata value
 function server.setMeta(clientId, key, value)
     if _clients[clientId] then
         _clients[clientId].meta[key] = value
@@ -247,6 +281,9 @@ function server.setMeta(clientId, key, value)
 end
 
 --- Retrieve metadata from a connected client. Returns nil if not found.
+---@param clientId number Client ID of the client
+---@param key string Metadata key
+---@return any|nil data Metadata value or nil if not found
 function server.getMeta(clientId, key)
     if _clients[clientId] then
         return _clients[clientId].meta[key]
@@ -255,13 +292,13 @@ function server.getMeta(clientId, key)
 end
 
 -- Internal: remove client and clean up rooms
+---@param clientId number Client ID to remove
 local function _removeClient(clientId)
     if not _clients[clientId] then return end
     _clients[clientId] = nil
 
     for roomName, members in pairs(_rooms) do
         members[clientId] = nil
-        -- prune empty rooms
         local count = 0
         for _ in pairs(members) do count = count + 1 end
         if count == 0 then _rooms[roomName] = nil end
@@ -270,12 +307,14 @@ local function _removeClient(clientId)
     if _onDisconnectCb then
         pcall(_onDisconnectCb, clientId)
     end
-    event.emit("server.clientDisconnect", clientId)
+    server._emit("server.clientDisconnect", clientId)
     logger.info("Server: Client " .. clientId .. " disconnected")
-    _conPush("Client #" .. clientId .. " disconnected", "warn")
+    _consolePush("Client #" .. clientId .. " disconnected", "warn")
 end
 
 --- Kick a client from the server with an optional reason string.
+---@param clientId number Client ID to kick
+---@param reason? string Optional reason for the kick, sent to the client before disconnecting
 function server.kick(clientId, reason)
     if not _clients[clientId] then return end
     server.send(clientId, "SERVER_KICK", { reason = reason or "Kicked by server" })
@@ -286,6 +325,8 @@ end
 -- ─── Rooms ────────────────────────────────────────────────────────────────────
 
 --- Add a client to a named room (creates it if it doesn't exist).
+---@param clientId number Client ID to add to the room
+---@param roomName string Name of the room to join
 function server.joinRoom(clientId, roomName)
     if not _clients[clientId] then return end
     if not _rooms[roomName] then _rooms[roomName] = {} end
@@ -293,6 +334,8 @@ function server.joinRoom(clientId, roomName)
 end
 
 --- Remove a client from a named room.
+---@param clientId number Client ID to remove from the room
+---@param roomName string Name of the room to leave
 function server.leaveRoom(clientId, roomName)
     if _rooms[roomName] then
         _rooms[roomName][clientId] = nil
@@ -300,6 +343,8 @@ function server.leaveRoom(clientId, roomName)
 end
 
 --- Returns a list of client IDs currently in the given room.
+---@param roomName string Name of the room to query
+---@return number[] list List of client IDs in the room, or empty list if room doesn't exist
 function server.getRoomClients(roomName)
     local list = {}
     if _rooms[roomName] then
@@ -311,6 +356,8 @@ function server.getRoomClients(roomName)
 end
 
 --- Returns a list of room names the given client is a member of.
+---@param clientId number Client ID to query
+---@return string[] list List of room names the client is a member of
 function server.getClientRooms(clientId)
     local list = {}
     for roomName, members in pairs(_rooms) do
@@ -324,6 +371,10 @@ end
 -- ─── Messaging ────────────────────────────────────────────────────────────────
 
 --- Send a typed message to a specific client.
+---@param clientId number Client ID of the recipient
+---@param msgType string Message type identifier
+---@param data? table Optional message data payload
+---@return boolean success True if the message was sent successfully, false if the client is not connected or network is closed
 function server.send(clientId, msgType, data)
     if not network.isOpen then return false end
     local pkt = makePacket(msgType, data)
@@ -332,7 +383,9 @@ function server.send(clientId, msgType, data)
 end
 
 --- Broadcast a typed message to all connected clients.
--- @param exceptId  optional client ID to skip
+---@param msgType string Message type identifier
+---@param data? table Optional message data payload
+---@param exceptId? number Optional client ID to skip
 function server.broadcast(msgType, data, exceptId)
     if not network.isOpen then return end
     local pkt = makePacket(msgType, data)
@@ -344,7 +397,10 @@ function server.broadcast(msgType, data, exceptId)
 end
 
 --- Broadcast a message to all clients in a specific room.
--- @param exceptId  optional client ID to skip
+---@param roomName string Name of the room to broadcast to
+---@param msgType string Message type identifier
+---@param data? table Optional message data payload
+---@param exceptId? number Optional client ID to skip
 function server.broadcastRoom(roomName, msgType, data, exceptId)
     if not _rooms[roomName] then return end
     local pkt = makePacket(msgType, data)
@@ -358,29 +414,28 @@ end
 -- ─── Handlers & Middleware ────────────────────────────────────────────────────
 
 --- Register a handler for a specific message type.
--- Handler signature: fn(clientId, data, packet)
+---@param msgType string Message type identifier
+---@param fn fun(clientId: number, data: table, packet: NetworkPacket) Handler function that processes incoming messages of the specified type. Receives the client ID, message data, and the full packet as arguments.
 function server.on(msgType, fn)
-    server.print(string.format("Registered handler for message type: %s", msgType), "debug")
+    server.log(string.format("Registered handler: %s", msgType), "debug")
     _handlers[msgType] = fn
 end
 
 --- Remove a message type handler.
+---@param msgType string Message type identifier
 function server.off(msgType)
     _handlers[msgType] = nil
 end
 
 --- Add middleware that runs before every message handler.
--- Middleware signature: fn(clientId, packet, next)
--- Call next() to pass to the next middleware / handler.
--- Omitting next() stops further processing.
+---@param fn fun(clientId: number, packet: NetworkPacket, next: function) Middleware function that runs before message handlers. Receives the client ID, full packet, and a `next` function to call to continue processing. Middleware can modify the packet or perform actions before or after calling `next()`.
 function server.use(fn)
     _middleware[#_middleware + 1] = fn
 end
 
--- Internal: run the middleware chain then dispatch to handler
 local function _dispatch(clientId, packet)
     local i = 0
-    server.print(string.format("Dispatching packet type '%s' from client #%d", tostring(packet.type), clientId), "debug")
+    server.log(string.format("Dispatch: '%s' from #%d", tostring(packet.type), clientId), "debug")
     local function next()
         i = i + 1
         if i <= #_middleware then
@@ -404,11 +459,13 @@ end
 -- ─── Connection Callbacks ─────────────────────────────────────────────────────
 
 --- Called when a new client connects. fn(clientId)
+---@param fn fun(clientId: number) Callback function that is called when a new client connects. Receives the client ID as an argument.
 function server.onConnect(fn)
     _onConnectCb = fn
 end
 
 --- Called when a client disconnects. fn(clientId)
+---@param fn fun(clientId: number) Callback function that is called when a client disconnects. Receives the client ID as an argument.
 function server.onDisconnect(fn)
     _onDisconnectCb = fn
 end
@@ -435,16 +492,33 @@ end
 --       server.send(clientId, "AUTH_REQUIRED", {}); return
 --   end
 
+--- Auth config structure
+---@class AuthOptions
+---@field minNameLen? number Minimum allowed username length (default 3)
+---@field maxNameLen? number Maximum allowed username length (default 16)
+---@field minPwLen? number Minimum allowed password length (default 4)
+---@field onLogin? fun(clientId: number, profile: ServerProfile) Optional callback fired after successful login
+---@field onRegister? fun(clientId: number, profile: ServerProfile) Optional callback fired after successful registration
+---@field onLogout? fun(clientId: number, profile: ServerProfile) Optional callback fired after logout
+---@field buildProfile? fun(clientId: number, data: table): table Optional function to build a complete profile on registration. Receives the client ID and original registration data, should return a table of additional profile fields to merge into the stored profile (e.g. starting stats or inventory).
+
+--- Auth profile structure (stored in DB)
+---@class AuthSystem
+---@field enabled boolean Whether the auth system is enabled
+---@field db Collection The Obsidian DB collection used to store user profiles
+---@field sessions table Active login sessions, indexed by client ID (clientId → profile)
+---@field nonces table One-time login nonces for challenge-response authentication, indexed by client ID (clientId → { nonce, name, expireAt })
+---@field attempts table Failed login attempt tracking for rate limiting, indexed by client ID (clientId
+---@field opts AuthOptions Configuration options for the auth system
 local _auth = {
-    enabled  = false,
-    db       = nil,
-    sessions = {},    -- [clientId] = profile
-    nonces   = {},    -- [clientId] = { nonce, name, expireAt }
-    attempts = {},    -- [clientId] = { count, resetAt }
-    opts     = {},
+    enabled = false,
+    db = nil,
+    sessions = {}, -- [clientId] = profile
+    nonces = {}, -- [clientId] = { nonce, name, expireAt }
+    attempts = {}, -- [clientId] = { count, resetAt }
+    opts = {},
 }
 
--- djb2 hash — lightweight, deterministic, no external deps.
 local function _djb2(str)
     local h = 5381
     for i = 1, #str do
@@ -453,7 +527,6 @@ local function _djb2(str)
     return tostring(h)
 end
 
--- Strip the passwordHash field before sending a profile to a client.
 local function _safeProfile(profile)
     local out = {}
     for k, v in pairs(profile) do
@@ -463,25 +536,23 @@ local function _safeProfile(profile)
 end
 
 --- Enable the built-in auth system.
--- @param db    An Obsidian DB collection (from Engine.db.open)
--- @param opts  Optional configuration table (see module header)
+---@param db Collection An Obsidian DB collection
+---@param opts? AuthOptions Optional configuration for the auth system (e.g. password requirements)
 function server.enableAuth(db, opts)
     assert(db, "server.enableAuth: db must be an Obsidian DB collection")
     opts = opts or {}
-    _auth.db      = db
-    _auth.opts    = opts
+    _auth.db = db
+    _auth.opts = opts
     _auth.enabled = true
 
     local minNameLen = opts.minNameLen or 3
     local maxNameLen = opts.maxNameLen or 16
-    local minPwLen   = opts.minPwLen   or 4
+    local minPwLen = opts.minPwLen or 4
 
-    -- ── REGISTER handler ────────────────────────────────────────────────────
-    -- Client sends djb2(password) — plaintext never leaves the client.
     _handlers["REGISTER"] = function(clientId, data)
-        local name         = tostring(data.name or "")
-        local passwordHash = tostring(data.passwordHash or "")  -- pre-hashed by client
-        local class        = data.class  -- optional, game-specific
+        local name = tostring(data.name or "")
+        local passwordHash = tostring(data.passwordHash or "")
+        local class = data.class
 
         if #name < minNameLen or #name > maxNameLen then
             server.send(clientId, "REGISTER_FAILED",
@@ -504,12 +575,11 @@ function server.enableAuth(db, opts)
         end
 
         local profile = {
-            cid          = clientId,
-            name         = name,
+            cid = clientId,
+            name = name,
             passwordHash = passwordHash,  -- already hashed by client
-            class        = class,
+            class = class,
         }
-        -- Merge any extra fields the game passed (e.g. starting stats)
         if opts.buildProfile then
             local extra = opts.buildProfile(clientId, data) or {}
             for k, v in pairs(extra) do profile[k] = v end
@@ -517,13 +587,11 @@ function server.enableAuth(db, opts)
         _auth.db:insert(profile)
         _auth.sessions[clientId] = profile
         logger.info("Auth: '" .. name .. "' registered (client " .. clientId .. ")")
-        _conPush("Auth: '" .. name .. "' registered", "success")
+        _consolePush("Auth: '" .. name .. "' registered", "success")
         server.send(clientId, "REGISTER_SUCCESS", { profile = _safeProfile(profile) })
         if opts.onRegister then pcall(opts.onRegister, clientId, profile) end
     end
 
-    -- ── LOGIN_CHALLENGE_REQUEST handler ─────────────────────────────────────
-    -- Step 1: client sends username → server returns a one-time nonce.
     _handlers["LOGIN_CHALLENGE_REQUEST"] = function(clientId, data)
         local now = os.epoch("utc") / 1000
         local att = _auth.attempts[clientId]
@@ -539,15 +607,12 @@ function server.enableAuth(db, opts)
         server.send(clientId, "LOGIN_CHALLENGE", { nonce = nonce })
     end
 
-    -- ── LOGIN handler ────────────────────────────────────────────────────────
-    -- Step 2: client replies with djb2(clientPasswordHash .. nonce).
     _handlers["LOGIN"] = function(clientId, data)
-        local now      = os.epoch("utc") / 1000
-        local entry    = _auth.nonces[clientId]
-        local name     = tostring(data.name or "")
+        local now = os.epoch("utc") / 1000
+        local entry = _auth.nonces[clientId]
+        local name = tostring(data.name or "")
         local response = tostring(data.response or "")
 
-        -- Validate nonce: must exist, match username, and not be expired
         if not entry or entry.name ~= name or now > entry.expireAt then
             _auth.nonces[clientId] = nil
             server.send(clientId, "LOGIN_FAILED", { message = "Challenge expired. Please try again." })
@@ -557,21 +622,19 @@ function server.enableAuth(db, opts)
 
         local profile = _auth.db:findOne({ name = name })
         if not profile or _djb2(profile.passwordHash .. entry.nonce) ~= response then
-            -- Track failed attempt for rate limiting
             local att = _auth.attempts[clientId] or { count = 0, resetAt = 0 }
             att.count = att.count + 1
             if att.count >= 5 then
                 att.resetAt = now + 60
                 att.count   = 0
-                _conPush("Auth: Client #" .. clientId .. " rate-limited (5 failed attempts)", "warn")
+                _consolePush("Auth: Client #" .. clientId .. " rate-limited", "warn")
             end
             _auth.attempts[clientId] = att
             server.send(clientId, "LOGIN_FAILED", { message = "Wrong username or password." })
-            _conPush("Auth: Failed login for '" .. name .. "' (client " .. clientId .. ")", "warn")
+            _consolePush("Auth: Failed login for '" .. name .. "'", "warn")
             return
         end
 
-        -- Success – clear rate limit counter
         _auth.attempts[clientId] = nil
         if profile.cid ~= clientId then
             _auth.db:update({ name = name }, { cid = clientId })
@@ -579,38 +642,43 @@ function server.enableAuth(db, opts)
         end
         _auth.sessions[clientId] = profile
         logger.info("Auth: '" .. name .. "' logged in (client " .. clientId .. ")")
-        _conPush("Auth: '" .. name .. "' logged in", "success")
+        _consolePush("Auth: '" .. name .. "' logged in", "success")
         server.send(clientId, "LOGIN_SUCCESS", { profile = _safeProfile(profile) })
         if opts.onLogin then pcall(opts.onLogin, clientId, profile) end
     end
 
-    -- ── LOGOUT handler ───────────────────────────────────────────────────────
     _handlers["LOGOUT"] = function(clientId)
         local profile = _auth.sessions[clientId]
         _auth.sessions[clientId] = nil
         if profile then
             logger.info("Auth: '" .. profile.name .. "' logged out (client " .. clientId .. ")")
-            _conPush("Auth: '" .. profile.name .. "' logged out", "info")
+            _consolePush("Auth: '" .. profile.name .. "' logged out", "info")
         end
         if opts.onLogout then pcall(opts.onLogout, clientId, profile) end
     end
 end
 
---- Namespace exposed to game code after server.enableAuth() is called.
 server.auth = {
-    --- Returns true if the client has an active session.
+    --- Returns true if the client is currently logged in.
+    ---@param clientId number Client ID to check
+    ---@return boolean isLoggedIn True if the client has an active session, false otherwise
     isLoggedIn = function(clientId)
         return _auth.sessions[clientId] ~= nil
     end,
     --- Returns the in-memory profile for a logged-in client, or nil.
+    ---@param clientId number Client ID to query
+    ---@return ServerProfile|nil profile The client's profile from the active session, or nil if not logged in
     getProfile = function(clientId)
         return _auth.sessions[clientId]
     end,
     --- Manually clear a client's session (e.g. on disconnect).
+    ---@param clientId number Client ID to log out
     logout = function(clientId)
         _auth.sessions[clientId] = nil
     end,
     --- Convenience guard: sends AUTH_REQUIRED and returns false if not logged in.
+    ---@param clientId number Client ID to check
+    ---@return boolean True if the client is logged in, false otherwise
     require = function(clientId)
         if not _auth.sessions[clientId] then
             server.send(clientId, "AUTH_REQUIRED", { message = "Please log in first." })
@@ -624,41 +692,46 @@ server.auth = {
 -- ─── Tick System ─────────────────────────────────────────────────────────────
 
 --- Register a callback to be called every server tick. fn(dt)
+---@param fn fun(dt: number) Callback function that is called every server tick. Receives the delta time in seconds since the last tick as an argument.
 function server.onTick(fn)
     _tickCbs[#_tickCbs + 1] = fn
 end
 
 --- Set the server tick rate (ticks per second, default 20).
+---@param n number Desired tick rate (ticks per second). Must be a positive number; values less than 1 will be treated as 1.
 function server.setTickRate(n)
     _tickRate = math.max(1, n)
 end
 
 --- Set the client timeout in seconds (0 to disable). Default 30.
+---@param seconds number Desired timeout in seconds. Set to 0 to disable.
 function server.setTimeout(seconds)
     _timeout = seconds
 end
 
 --- Set the heartbeat interval in seconds (0 to disable). Default 5.
--- The server sends a PING every N seconds; clients should reply with a PONG.
--- The round-trip time is stored as the client's ping in milliseconds.
+---@param seconds number Desired heartbeat interval in seconds. Set to 0 to disable automatic heartbeats.
 function server.setHeartbeatInterval(seconds)
     _heartbeat = seconds
 end
 
 --- Enable per-client message sequence numbers.
--- When enabled, packets with a seq field lower than the last seen value
--- for that client are silently dropped (protects against replays / duplicates).
 function server.enableSequencing()
     _seqEnabled = true
 end
 
 --- Returns the last measured ping (ms) for a client, or nil if unknown.
+---@param clientId number Client ID to query
+---@return number|nil ping Last measured ping in milliseconds, or nil if no heartbeat response received yet
 function server.getPing(clientId)
     local c = _clients[clientId]
     return c and c.ping or nil
 end
 
 --- Send a typed message to a list of specific client IDs.
+---@param idList number[] List of client IDs to send the message to
+---@param msgType string Message type identifier
+---@param data? table Optional message data payload
 function server.sendToList(idList, msgType, data)
     if not network.isOpen then return end
     local pkt = makePacket(msgType, data)
@@ -672,9 +745,10 @@ end
 -- ─── Init & Lifecycle ─────────────────────────────────────────────────────────
 
 --- Initialise the server: open modem, host protocol.
--- @param protocol  Rednet protocol string (e.g. "myGame")
--- @param hostname  Rednet hostname (e.g. "server")
--- @param side      Optional modem side; auto-detected if nil
+---@param protocol string Protocol name to host (must match what clients connect to)
+---@param hostname string Human-readable server name (used for discovery, can be same as protocol)
+---@param side? string Optional modem side to use (e.g. "back"); if not specified, will use the first available modem
+---@return boolean success True if the server was successfully initialized, false if there was an error (e.g. no modem found or failed to host protocol)
 function server.init(protocol, hostname, side)
     _protocol = protocol
 
@@ -699,14 +773,14 @@ function server.stop()
     if not _running then return end
     _running = false
     server.broadcast("SERVER_SHUTDOWN", { reason = "Server shutting down" })
-    for id in pairs(_clients) do
-        _clients[id] = nil
-    end
+    local toRemove = {}
+    for id in pairs(_clients) do toRemove[#toRemove + 1] = id end
+    for _, id in ipairs(toRemove) do _clients[id] = nil end
     _rooms = {}
     network.close()
     _conPush("Server stopped.", "system")
     _conRender()
-    event.emit("server.stopped")
+    server._emit("server.stopped")
     logger.info("Server: Stopped")
 end
 
@@ -715,8 +789,7 @@ end
 local function _handleRednet(senderId, pkt, proto)
     if proto ~= _protocol then return end
 
-    -- Respond to broadcast discovery (pre-handshake — no client record needed)
-    if not pkt.type == "PONG" then
+    if pkt.type ~= "PONG" then
         server.print(string.format("Received rednet_message from %d: type=%s", senderId, tostring(pkt.type)), "debug")
     end
     if type(pkt) == "table" and pkt.type == "DISCOVER" and pkt.hostname == _hostname then
@@ -736,36 +809,33 @@ local function _handleRednet(senderId, pkt, proto)
     -- Built-in: connection handshake
     if pkt.type == "CONNECT_REQUEST" then
         _clients[senderId] = {
-            id            = senderId,
-            meta          = {},
-            joinedAt      = os.epoch("utc") / 1000,
-            lastSeen      = os.epoch("utc") / 1000,
-            ping          = nil,
+            id = senderId,
+            meta = {},
+            joinedAt = os.epoch("utc") / 1000,
+            lastSeen = os.epoch("utc") / 1000,
+            ping = nil,
             heartbeatSent = nil,
-            lastSeq       = -1,
+            lastSeq = -1,
         }
         rednet.send(senderId, makePacket("CONNECT_ACCEPT", {
-            serverId   = os.getComputerID(),
+            serverId = os.getComputerID(),
             serverTime = os.epoch("utc"),
         }), _protocol)
 
         if _onConnectCb then pcall(_onConnectCb, senderId) end
-        event.emit("server.clientConnect", senderId)
+        server._emit("server.clientConnect", senderId)
         logger.info("Server: Client " .. senderId .. " connected")
-        _conPush("Client #" .. senderId .. " connected  (total: " .. server.clientCount() .. ")", "success")
+        _consolePush("Client #" .. senderId .. " connected", "success")
         return
     end
 
-    -- Built-in: graceful leave
     if pkt.type == "CLIENT_LEAVE" then
         _removeClient(senderId)
         return
     end
 
-    -- Ignore messages from unknown clients (not yet handshook)
     if not _clients[senderId] then return end
 
-    -- Built-in: heartbeat reply
     if pkt.type == "PONG" then
         local c = _clients[senderId]
         if c and c.heartbeatSent then
@@ -774,8 +844,6 @@ local function _handleRednet(senderId, pkt, proto)
         end
         return
     end
-
-    -- Sequence dedup: drop replayed / out-of-order packets
     if _seqEnabled and pkt.seq then
         local c = _clients[senderId]
         if pkt.seq <= c.lastSeq then return end
@@ -787,95 +855,89 @@ end
 
 -- ─── Main Loop ────────────────────────────────────────────────────────────────
 
---- Run the server loop (blocking, typically called from the main script).
--- Handles network events, tick callbacks, and client timeouts in one loop.
-function server.run()
-    if not _protocol then
-        logger.error("Server: Call server.init() before server.run()")
-        return
+local _tickTimer = nil
+local _lastTick  = 0
+
+local function _runTick()
+    local now = os.epoch("utc") / 1000
+    local dt = now - _lastTick
+    _lastTick = now
+
+    for id, info in pairs(_clients) do
+        if _timeout > 0 and now - info.lastSeen > _timeout then
+            logger.warn("Server: Client " .. id .. " timed out")
+            _consolePush(string.format("Client #%d timed out", id), "warn")
+            server.kick(id, "Timed out")
+        elseif _heartbeat > 0 and not info.heartbeatSent and
+               (now - info.lastSeen) >= _heartbeat then
+            info.heartbeatSent = os.epoch("utc")
+            rednet.send(id, makePacket("PING", { t = info.heartbeatSent }), _protocol)
+        end
     end
 
-    _running = true
-    _con.startTime = os.epoch("utc") / 1000
-    event.emit("server.started")
-    logger.info("Server: Running at " .. _tickRate .. " ticks/s")
-    _conPush("Server started  |  protocol: " .. (_protocol or "?") .. "  |  " .. _tickRate .. " ticks/s", "system")
+    for _, fn in ipairs(_tickCbs) do
+        local ok, err = pcall(fn, dt)
+        if not ok then
+            logger.error("Server tick error: " .. tostring(err))
+            _consolePush("Tick error: " .. tostring(err), "error")
+        end
+    end
 
+    _con.dirty = true
+    _consoleRender()
+    _tickTimer = os.startTimer(1 / _tickRate)
+end
+
+--- Process a single raw OS event. Called by server.run() internally or by the
+-- Engine event loop for non-blocking integrated use.
+---@param rawEvent table The raw event table as returned by os.pullEventRaw()
+function server.processEvent(rawEvent)
+    local evName = rawEvent[1]
+    if evName == "rednet_message" then
+        _handleRednet(rawEvent[2], rawEvent[3], rawEvent[4])
+    elseif evName == "term_resize" then
+        _con.dirty = true
+    elseif evName == "timer" and rawEvent[2] == _tickTimer then
+        _runTick()
+    end
+end
+
+--- Start the server without blocking. Events must be fed via server.processEvent()
+-- or by calling server.run(). Returns false if server.init() was not called first.
+---@return boolean success True if the server started successfully, false if server.init() was not called
+function server.start()
+    if not _protocol then
+        logger.error("Server: Call server.init() before server.start()")
+        return false
+    end
+    _running = true
+    _lastTick = os.epoch("utc") / 1000
+    _con.startTime = _lastTick
+    _tickTimer = os.startTimer(1 / _tickRate)
+    server._emit("server.started")
+    logger.info("Server: Running at " .. _tickRate .. " ticks/s")
+    _consolePush("Server started on " .. (_protocol or "?"), "system")
     if _con.enabled then
         local sw, sh = term.getSize()
+        _rebuildLines(sw)
         _con.lastWidth  = sw
         _con.lastHeight = sh
-        _rebuildLines(sw)
     end
+    return true
+end
 
-    local FRAME_TIME = 1 / _tickRate
-    local lastTime   = os.epoch("utc") / 1000
-
-    -- Start the first tick timer BEFORE entering the loop so pullEventRaw
-    -- never blocks forever when there are no network events.
-    local _tickTimer = os.startTimer(FRAME_TIME)
-
+--- Run the server loop (blocking, for dedicated server computers).
+-- Equivalent to server.start() followed by a manual os.pullEventRaw() loop.
+function server.run()
+    if not server.start() then return end
     while _running do
         local rawEvent = { os.pullEventRaw() }
-        local evName   = rawEvent[1]
-
-        -- Graceful quit
-        if evName == "terminate" then
+        if rawEvent[1] == "terminate" then
             logger.info("Server: Terminate signal received")
             server.stop()
             break
         end
-
-        -- Incoming rednet message
-        if evName == "rednet_message" then
-            local senderId = rawEvent[2]
-            local pkt      = rawEvent[3]
-            local proto    = rawEvent[4]
-            _handleRednet(senderId, pkt, proto)
-        end
-
-        -- Terminal resize: _conRender detects the size change and rebuilds wrapping
-        if evName == "term_resize" then
-            _con.dirty = true
-        end
-
-        -- Tick: only fires when OUR tick timer event arrives
-        if evName == "timer" and rawEvent[2] == _tickTimer then
-            local now = os.epoch("utc") / 1000
-            local dt  = now - lastTime
-            lastTime  = now
-
-            -- Timeout + heartbeat check
-            for id, info in pairs(_clients) do
-                -- Timeout
-                if _timeout > 0 and now - info.lastSeen > _timeout then
-                    logger.warn("Server: Client " .. id .. " timed out")
-                    _conPush(string.format("Client #%d timed out (no response for %ds)", id, _timeout), "warn")
-                    server.kick(id, "Timed out")
-                -- Heartbeat: send a PING if interval elapsed and no outstanding PING
-                elseif _heartbeat > 0 and not info.heartbeatSent and
-                       (now - info.lastSeen) >= _heartbeat then
-                    info.heartbeatSent = os.epoch("utc")
-                    rednet.send(id, makePacket("PING", { t = info.heartbeatSent }), _protocol)
-                end
-            end
-
-            -- Fire tick callbacks
-            for _, fn in ipairs(_tickCbs) do
-                local ok, err = pcall(fn, dt)
-                if not ok then
-                    logger.error("Server tick error: " .. tostring(err))
-                    _conPush("Tick error: " .. tostring(err), "error")
-                end
-            end
-
-            -- Always redraw console so uptime/client count stay current
-            _con.dirty = true
-            _conRender()
-
-            -- Schedule next tick
-            _tickTimer = os.startTimer(FRAME_TIME)
-        end
+        server.processEvent(rawEvent)
     end
 end
 

@@ -1,6 +1,8 @@
+---@diagnostic disable: undefined-global
 return {
     enabled = false,
     showLogs = false,
+    alwaysOnTop = true,
     updateTime = 0,
     drawTime = 0,
     fps = 0,

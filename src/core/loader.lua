@@ -1,5 +1,36 @@
+-- Obsidian Engine: Asset Loader
+-- Handles loading and caching of sprites, UI, and emitters.
+
+---@diagnostic disable: undefined-global
+
 local logger = require("core.logger")
 
+---@alias SpriteLayer table<number, string[]> Each layer is a table of rows, where each row is an array of single-character strings.
+---@alias SpriteFrame table<number, SpriteLayer> [1]=Chars, [2]=Fore, [3]=Back
+
+--- Represents a multi-frame sprite with character, foreground, and background layers.
+---@class Sprite
+---@field width number The width of the sprite
+---@field height number The height of the sprite
+---@field frameCount number The number of frames in the sprite
+---@field path string The original file path of the sprite (for reference)
+---@field [number] SpriteFrame Frames indexed from 1 to frameCount
+
+--- Represents UI layout data loaded from .oui files.
+---@class UIData
+---@field elements table<string, table> A table of UI elements, where each key is an element name and the value is a table of properties.
+
+--- Represents particle emitter configuration loaded from .pe files.
+---@class EmitterData
+---@field sprite Sprite|nil The sprite associated with the emitter, if any
+---@field [string] any Additional emitter properties
+
+--- Loader module definition
+---@class LoaderModule
+---@field basePath string|nil Optional base path for resolving asset files
+---@field spriteCache table<string, Sprite> Cache of loaded sprites, keyed by full file path
+---@field uiCache table<string, UIData> Cache of loaded UI data, keyed by full file path
+---@field emitterCache table<string, EmitterData> Cache of loaded emitter data, keyed by full file path
 local loader = {
     basePath = nil,
     spriteCache = {},
@@ -24,6 +55,8 @@ local function resolvePath(path)
     return path
 end
 
+--- Set a base path for asset loading. Relative paths will be resolved against this base path.
+---@param path string|nil The base path to set, or nil to disable
 function loader.setBasePath(path)
     loader.basePath = path
 end
@@ -34,6 +67,26 @@ local function toTable(str)
     return t
 end
 
+local function _loadFile(path)
+    local fullPath = resolvePath(path)
+    if not fs.exists(fullPath) then
+        return false, "File not found: " .. fullPath
+    end
+    local file = fs.open(fullPath, "r")
+    if not file then
+        return false, "Could not open file: " .. fullPath
+    end
+    local raw = file.readAll()
+    file.close()
+    local ok, data = pcall(textutils.unserialize, raw)
+    if not ok or data == nil then
+        return false, "Failed to unserialize: " .. fullPath
+    end
+    return true, data, fullPath
+end
+
+--- Convert string rows into character tables for faster pixel access.
+---@param data Sprite The sprite data to process
 function loader._processSprite(data)
     if not data then return end
     for i = 1, (data.frameCount or #data) do
@@ -52,6 +105,10 @@ function loader._processSprite(data)
     end
 end
 
+--- Validate that the loaded sprite data has the correct structure and dimensions.
+---@param path string The file path of the sprite (for error messages)
+---@param data any The loaded data to validate
+---@return boolean ok, string? error Returns true if valid, or false and an error message if invalid
 function loader._validateSprite(path, data)
     if not data or type(data) ~= "table" then
         return false, "File is not a valid table."
@@ -94,31 +151,19 @@ function loader._validateSprite(path, data)
     return true
 end
 
-function loader.load(path)
+--- Load a sprite (.obs file) from disk or cache.
+---@param path string The file path of the sprite to load
+---@return Sprite|nil sprite The loaded sprite data, or nil if loading failed
+function loader.loadSprite(path)
     local fullPath = resolvePath(path)
     if loader.spriteCache[fullPath] then
         return loader.spriteCache[fullPath]
     end
 
-    if not fs.exists(fullPath) then
-        local err = "File not found: " .. fullPath
-        logger.error("Loader: " .. err)
-        return nil, err
-    end
-
-    local file = fs.open(fullPath, "r")
-    if not file then
-        local err = "Could not open file: " .. fullPath
-        logger.error("Loader: " .. err)
-        return nil, err
-    end
-    local ok, data = pcall(textutils.unserialize, file.readAll())
-    file.close()
-
-    if not ok or not data then
-        local err = "Failed to unserialize OSF: " .. path
-        logger.error("Loader: " .. err)
-        return nil, err
+    local ok, data, fp = _loadFile(path)
+    if not ok then
+        logger.error("Loader: " .. data)
+        return nil, data
     end
 
     local valid, verr = loader._validateSprite(path, data)
@@ -128,86 +173,63 @@ function loader.load(path)
     end
 
     loader._processSprite(data)
-
     data.path = path
-    loader.spriteCache[fullPath] = data
-
-    logger.info("Loader: Cached sprite: " .. fullPath)
+    loader.spriteCache[fp] = data
+    logger.info("Loader: Cached sprite: " .. fp)
     return data
 end
 
+--- Load UI data (.oui file) from disk or cache.
+---@param path string The file path of the UI data to load
+---@return UIData|nil oui The loaded UI data, or nil if loading failed
+---@return string? err An error message if loading failed
 function loader.loadUI(path)
     local fullPath = resolvePath(path)
     if loader.uiCache[fullPath] then
         return loader.uiCache[fullPath]
     end
 
-    if not fs.exists(fullPath) then
-        local err = "File not found: " .. fullPath
-        logger.error("Loader: " .. err)
-        return nil, err
+    local ok, data, fp = _loadFile(path)
+    if not ok then
+        logger.error("Loader: " .. data)
+        return nil, data
     end
 
-    local file = fs.open(fullPath, "r")
-    if not file then
-        local err = "Could not open file: " .. fullPath
-        logger.error("Loader: " .. err)
-        return nil, err
-    end
-    local ok, data = pcall(textutils.unserialize, file.readAll())
-    file.close()
-
-    if not ok or not data then
-        local err = "Failed to parse UI file: " .. tostring(data)
-        logger.error("Loader: " .. err)
-        return nil, err
-    end
-
-    loader.uiCache[fullPath] = data
+    loader.uiCache[fp] = data
     return data
 end
 
+--- Load emitter configuration (.pe file) from disk or cache.
+---@param path string The file path of the emitter data to load
+---@return EmitterData|nil pe The loaded emitter data, or nil if loading failed
 function loader.loadEmitter(path)
     local fullPath = resolvePath(path)
     if loader.emitterCache[fullPath] then
         return loader.emitterCache[fullPath]
     end
 
-    if not fs.exists(fullPath) then
-        local err = "File not found: " .. fullPath
-        logger.error("Loader: " .. err)
-        return nil, err
-    end
-
-    local file = fs.open(fullPath, "r")
-    if not file then
-        local err = "Could not open file: " .. fullPath
-        logger.error("Loader: " .. err)
-        return nil, err
-    end
-    local ok, data = pcall(textutils.unserialize, file.readAll())
-    file.close()
-
-    if not ok or not data then
-        local err = "Failed to unserialize emitter: " .. path
-        logger.error("Loader: " .. err)
-        return nil, err
+    local ok, data, fp = _loadFile(path)
+    if not ok then
+        logger.error("Loader: " .. data)
+        return nil, data
     end
 
     if data.sprite then loader._processSprite(data.sprite) end
-
-    loader.emitterCache[fullPath] = data
+    loader.emitterCache[fp] = data
     return data
 end
 
+--- Remove an asset from all caches.
+---@param path string The file path of the asset to unload
 function loader.unload(path)
     local fullPath = resolvePath(path)
-    loader.spriteCache[fullPath]  = nil
-    loader.uiCache[fullPath]      = nil
+    loader.spriteCache[fullPath] = nil
+    loader.uiCache[fullPath] = nil
     loader.emitterCache[fullPath] = nil
     logger.info("Loader: Unloaded asset: " .. tostring(fullPath))
 end
 
+--- Clear all cached assets.
 function loader.clearCache()
     loader.spriteCache = {}
     loader.uiCache = {}

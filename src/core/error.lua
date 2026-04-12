@@ -1,15 +1,20 @@
+---@diagnostic disable: undefined-global
 -- Obsidian Error Handler
 -- Displays a panic screen with stack trace on unhandled errors.
 -- Override Error.handler via Engine.onError(fn) to implement custom error handling.
+
 local logger = require("core.logger")
 
+---@class ErrorModule
+---@field handler fun(msg: string)|nil Custom error handler function (optional)
+---@field _shouldStop boolean Internal flag to indicate if the engine should stop after an error
 local Error = {
-    handler    = nil,
+    handler = nil,
     _shouldStop = false
 }
 
 local function writeLog(msg)
-   logger.error("[PANIC] " .. msg)
+    logger.error("[PANIC] " .. tostring(msg))
 end
 
 local function drawPanic(msg)
@@ -79,6 +84,11 @@ local function drawPanic(msg)
     os.pullEvent("key")
 end
 
+
+---Report an error through the configured handler or show panic screen.
+---@param msg any
+---@param trace? string
+---@return nil
 function Error.report(msg, trace)
     local fullMsg
     if trace and #tostring(trace) > 0 then

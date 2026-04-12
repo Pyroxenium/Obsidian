@@ -1,4 +1,4 @@
---- Obsidian Tilemap
+--- Obsidian Tilemap Module
 -- Multi-layer tile map with collision, slopes, one-way platforms, and
 -- runtime editing.  Connects to a Scene via map:attach(scene).
 --
@@ -19,35 +19,38 @@
 local loader  = require("core.loader")
 local storage = require("core.storage")
 
+--- A tilemap instance representing a multi-layer tile map. Tilemaps manage tile definitions, layers, and integration with scenes. They can be saved and loaded from storage, but sprite objects must be reloaded and re-attached after loading.
+---@class TilemapInstance
+---@field tileW number Tile width in pixels
+---@field tileH number Tile height in pixels
+---@field _defs table<number, table> Tile definitions by ID
+---@field _layers table List of layers with name, z, collision, and data
+---@field _layerMap table<string, table> Quick lookup of layers by name
+---@field _sprites table<string, any> Loaded sprite objects by path
+---@field _scene SceneInstance|nil Attached scene reference (set by map:attach)
 local tilemap = {}
 
--- ---------------------------------------------------------------------------
--- Constructor
--- ---------------------------------------------------------------------------
+--- This is the tilemap module for managing multi-layer tile maps in the engine. It provides functions to define tile types, manage layers, read/write tiles, and integrate with scenes. Tilemaps can be saved and loaded from storage, but sprite objects must be reloaded and re-attached after loading.
+---@class TilemapModule
+local TilemapModule = {}
 
 --- Create a new empty tilemap.
---- @param opts  table|nil  { tileW=number, tileH=number }
-function tilemap.new(opts)
+---@param opts  table|nil  { tileW=number, tileH=number } Tile size in pixels (default tileW=2, tileH=1)
+---@return TilemapInstance tilemap A new tilemap instance
+function TilemapModule.new(opts)
     opts = opts or {}
     local self = {
-        tileW      = opts.tileW or 2,
-        tileH      = opts.tileH or 1,
-
-        -- Tile definitions  [id] = { sprite, solid, type, hL, hR, ... }
-        _defs      = {},
-
-        -- Ordered layer list  [i] = { name, z, collision, data={} }
-        _layers    = {},
-        -- Quick lookup by name
-        _layerMap  = {},
-
-        -- Loaded sprite objects  [spriteKey] = spriteObj
-        _sprites   = {},
-
-        -- Attached scene (set by map:attach)
-        _scene     = nil,
+        tileW = opts.tileW or 2,
+        tileH = opts.tileH or 1,
+        _defs = {},
+        _layers = {},
+        _layerMap = {},
+        _sprites = {},
+        _scene = nil,
     }
-    return setmetatable(self, { __index = tilemap })
+    ---@cast self TilemapInstance
+    setmetatable(self, { __index = tilemap })
+    return self
 end
 
 -- ---------------------------------------------------------------------------
@@ -55,22 +58,17 @@ end
 -- ---------------------------------------------------------------------------
 
 --- Register a tile type.
---- @param id    number    Positive integer tile ID (0 = empty)
---- @param opts  table
----   sprite  string     Path to .osf sprite file
----   solid   bool       Blocks movement (default false)
----   type    string     nil | "slope" | "one-way"
----   hL      number     Slope height on left  edge (0-1, fraction of tileH)
----   hR      number     Slope height on right edge (0-1, fraction of tileH)
+---@param id number Positive integer tile ID (0 = empty)
+---@param opts {spritePath:string|nil, solid:boolean|nil, type:string|nil, hL:number|nil, hR:number|nil}  Tile properties: spritePath = path to sprite for this tile; solid = whether it blocks movement; type = "slope" or "one-way"; hL/hR = slope heights (0-1) for left/right edges (only for slopes)
 function tilemap:defineTile(id, opts)
     assert(type(id) == "number" and id > 0, "tilemap:defineTile id must be a positive number")
     opts = opts or {}
     self._defs[id] = {
-        spritePath = opts.sprite,
-        solid      = opts.solid or false,
-        type       = opts.type,   -- nil | "slope" | "one-way"
-        hL         = opts.hL or 0,
-        hR         = opts.hR or 0,
+        spritePath = opts.spritePath,
+        solid = opts.solid or false,
+        type = opts.type,
+        hL = opts.hL or 0,
+        hR = opts.hR or 0,
     }
 end
 
@@ -84,19 +82,18 @@ end
 -- ---------------------------------------------------------------------------
 
 --- Add a new data layer.
---- @param name  string  Unique layer name
---- @param opts  table|nil
----   z          number   Draw order (lower = further back, default -100)
----   collision  bool     Whether scene collision reads this layer (default false)
+---@param name string Unique layer name
+---@param opts { z:number|nil, collision:boolean|nil }  Layer properties: z = rendering order (lower renders first); collision = whether this layer is used for collision (first layer with collision=true is used by the engine)
+---@return table map The new layer object (with name, z, collision, and data fields)
 function tilemap:addLayer(name, opts)
     assert(type(name) == "string", "layer name must be a string")
     assert(not self._layerMap[name], "layer '" .. name .. "' already exists")
     opts = opts or {}
     local layer = {
-        name      = name,
-        z         = opts.z or -100,
+        name = name,
+        z = opts.z or -100,
         collision = opts.collision or false,
-        data      = {},   -- data[ty][tx] = tileId
+        data = {},
     }
     table.insert(self._layers, layer)
     table.sort(self._layers, function(a, b) return a.z < b.z end)
@@ -105,17 +102,22 @@ function tilemap:addLayer(name, opts)
 end
 
 --- Remove a layer by name.
+---@param name string Name of the layer to remove
+---@return boolean success True if the layer was found and removed, false if no such layer exists
 function tilemap:removeLayer(name)
     self._layerMap[name] = nil
     for i = #self._layers, 1, -1 do
         if self._layers[i].name == name then
             table.remove(self._layers, i)
-            return
+            return true
         end
     end
+    return false
 end
 
 --- Get the data table for a layer (raw access for bulk operations).
+---@param name string Name of the layer
+---@return table|nil The layer data table, or nil if the layer doesn't exist
 function tilemap:getLayer(name)
     return self._layerMap[name]
 end
@@ -125,10 +127,10 @@ end
 -- ---------------------------------------------------------------------------
 
 --- Set a single tile.
---- @param layerName  string
---- @param tx         number  1-based column
---- @param ty         number  1-based row
---- @param tileId     number  0 or nil = clear; positive = place
+--- @param layerName string
+--- @param tx number  1-based column
+--- @param ty number  1-based row
+--- @param tileId number  0 or nil = clear; positive = place
 function tilemap:setTile(layerName, tx, ty, tileId)
     local layer = self._layerMap[layerName]
     assert(layer, "tilemap:setTile: unknown layer '" .. tostring(layerName) .. "'")
@@ -138,6 +140,10 @@ function tilemap:setTile(layerName, tx, ty, tileId)
 end
 
 --- Get the tile id at (tx, ty) on a layer.  Returns nil for empty.
+---@param layerName string
+---@param tx number  1-based column
+---@param ty number  1-based row
+---@return number|nil tileId The tile ID at the specified location, or nil if empty or out of bounds
 function tilemap:getTile(layerName, tx, ty)
     local layer = self._layerMap[layerName]
     if not layer then return nil end
@@ -145,20 +151,18 @@ function tilemap:getTile(layerName, tx, ty)
 end
 
 --- Fill the entire layer (or a rectangular region) with a single tile id.
---- @param layerName  string
---- @param tileId     number  0 / nil = clear
---- @param x1         number|nil  Start column (default 1)
---- @param y1         number|nil  Start row    (default 1)
---- @param x2         number|nil  End   column (required if x1 given)
---- @param y2         number|nil  End   row    (required if y1 given)
+--- @param layerName string Name of the layer to fill
+--- @param tileId number 0 or nil = clear; positive = place
+--- @param x1 number|nil 1-based left column of the fill area (optional, defaults to full layer)
+--- @param y1 number|nil 1-based top row of the fill area (optional, defaults to full layer)
+--- @param x2 number|nil 1-based right column of the fill area (optional, defaults to full layer)
+--- @param y2 number|nil 1-based bottom row of the fill area (optional, defaults to full layer)
 function tilemap:fill(layerName, tileId, x1, y1, x2, y2)
     local layer = self._layerMap[layerName]
     assert(layer, "tilemap:fill: unknown layer '" .. tostring(layerName) .. "'")
     local val = (tileId and tileId > 0) and tileId or nil
     if not x1 then
-        -- Full clear / fill of existing data
         if val then
-            -- nothing to fill without bounds — require x1..x2 for fills
             error("tilemap:fill: provide x1,y1,x2,y2 when placing tiles (can't fill unbounded)")
         end
         layer.data = {}
@@ -174,14 +178,14 @@ function tilemap:fill(layerName, tileId, x1, y1, x2, y2)
 end
 
 --- Copy a rectangular region from one layer/position to another.
---- @param srcLayer   string
---- @param dstLayer   string
---- @param sx1        number  Source start column
---- @param sy1        number  Source start row
---- @param sx2        number  Source end column
---- @param sy2        number  Source end row
---- @param dx         number  Destination start column
---- @param dy         number  Destination start row
+---@param srcLayer string Name of the source layer
+---@param dstLayer string Name of the destination layer
+---@param sx1 number 1-based left column of the source rectangle
+---@param sy1 number 1-based top row of the source rectangle
+---@param sx2 number 1-based right column of the source rectangle
+---@param sy2 number 1-based bottom row of the source rectangle
+---@param dx number 1-based left column of the destination rectangle
+---@param dy number 1-based top row of the destination rectangle
 function tilemap:copyRect(srcLayer, dstLayer, sx1, sy1, sx2, sy2, dx, dy)
     local src = self._layerMap[srcLayer]
     local dst = self._layerMap[dstLayer]
@@ -204,25 +208,25 @@ end
 -- ---------------------------------------------------------------------------
 
 --- Convert world position to tile coordinates.
---- @return tx number, ty number  (1-based, may be outside map bounds)
+---@return number tx, number ty  -- 1-based, may be outside map bounds
 function tilemap:worldToTile(wx, wy)
     return math.floor(wx / self.tileW) + 1,
            math.floor(wy / self.tileH) + 1
 end
 
 --- Convert tile coordinates to the world position of its top-left corner.
---- @return wx number, wy number
+---@return number wx, number wy
 function tilemap:tileToWorld(tx, ty)
     return (tx - 1) * self.tileW,
            (ty - 1) * self.tileH
 end
 
 --- Iterate all non-empty tiles within a world-space rectangle.
---- @param wx1  number  Left  world X
---- @param wy1  number  Top   world Y
---- @param wx2  number  Right world X
---- @param wy2  number  Bottom world Y
---- @param fn   function(layerName, tx, ty, tileId)
+---@param wx1 number Left edge of the rectangle
+---@param wy1 number Top edge of the rectangle
+---@param wx2 number Right edge of the rectangle
+---@param wy2 number Bottom edge of the rectangle
+---@param fn fun(layerName:string, tx:number, ty:number, tileId:number) Callback function
 function tilemap:forArea(wx1, wy1, wx2, wy2, fn)
     local startX = math.floor(wx1 / self.tileW) + 1
     local startY = math.floor(wy1 / self.tileH) + 1
@@ -242,9 +246,10 @@ end
 
 --- Return a table of { name, tx, ty, tileId } for the 4 cardinal neighbors
 --- of (tx, ty) on a specific layer.
---- @param layerName  string
---- @param tx         number
---- @param ty         number
+---@param layerName string Name of the layer to check
+---@param tx number 1-based column
+---@param ty number 1-based row
+---@return table[] neighbors List of neighbor info tables with fields: name (layer name), tx, ty, tileId (nil if empty)
 function tilemap:getNeighbors(layerName, tx, ty)
     local layer = self._layerMap[layerName]
     if not layer then return {} end
@@ -264,21 +269,19 @@ end
 
 --- Attach this tilemap to a scene.  Preloads sprites and writes the scene's
 --- `tilemap` field in the format the engine renderer and collision system expect.
---- @param scene  table  Obsidian scene instance
+--- @param scene SceneInstance The scene to attach to. The tilemap will write to scene.tilemap and mark scene._staticDirty when modified.
 function tilemap:attach(scene)
     self._scene = scene
 
-    -- Preload all referenced sprites
-    for id, def in pairs(self._defs) do
+    for _, def in pairs(self._defs) do
         if def.spritePath and not self._sprites[def.spritePath] then
-            local spr = loader.load(def.spritePath)
+            local spr = loader.loadSprite(def.spritePath)
             if spr then
                 self._sprites[def.spritePath] = spr
             end
         end
     end
 
-    -- Build the scene.tilemap table the renderer and isAreaBlocked() expect
     self:_buildSceneTilemap(scene)
 end
 
@@ -286,7 +289,7 @@ end
 function tilemap:detach()
     if self._scene then
         self._scene.tilemap = nil
-        self._scene.staticDirty = true
+        self._scene._staticDirty = true
         self._scene = nil
     end
 end
@@ -297,7 +300,7 @@ end
 
 --- Save the tilemap's layer data (definitions and tile arrays) to storage.
 --- Sprites are NOT saved — re-define them with defineTile() on load.
---- @param name  string  Storage key (passed to storage.save)
+--- @param name string Storage key (passed to storage.save)
 function tilemap:save(name)
     local payload = {
         tileW  = self.tileW,
@@ -325,10 +328,10 @@ function tilemap:save(name)
     storage.save(name, payload)
 end
 
---- Load layer data from storage.  Does NOT re-attach to a scene;
+--- Load layer data from storage. Does NOT re-attach to a scene;
 --- call map:attach(scene) afterwards.
---- @param name  string  Same key used in map:save()
---- @return map  The map instance (self), or nil + error string if not found
+---@param name string Same key used in map:save()
+---@return TilemapInstance|nil, string|nil The tilemap instance (self) if successful, or nil and an error message if loading failed
 function tilemap:load(name)
     local payload = storage.load(name)
     if not payload then return nil, "tilemap: no saved data for key '" .. name .. "'" end
@@ -336,12 +339,10 @@ function tilemap:load(name)
     self.tileW = payload.tileW or self.tileW
     self.tileH = payload.tileH or self.tileH
 
-    -- Restore definitions (sprite objects need re-linking after attach)
     for id, def in pairs(payload.defs or {}) do
         self._defs[tonumber(id)] = def
     end
 
-    -- Restore layers
     self._layers   = {}
     self._layerMap = {}
     for _, saved in ipairs(payload.layers or {}) do
@@ -362,10 +363,11 @@ end
 -- Internal helpers
 -- ---------------------------------------------------------------------------
 
+--- Internal function to mark the tilemap as dirty and trigger a scene update. Should be called after any modification to tile data or definitions.
 function tilemap:_markDirty()
     if self._scene then
         self:_buildSceneTilemap(self._scene)
-        self._scene.staticDirty = true
+        self._scene._staticDirty = true
     end
 end
 
@@ -373,9 +375,9 @@ end
 --- The renderer iterates `tm.layers` (ordered by z); the collision system
 --- uses `tm.data` / `tm.solidTiles` / `tm.tileProperties` (mapped from the
 --- first layer flagged collision=true, preserving backward compatibility).
+---@param scene SceneInstance The scene to which the tilemap is attached
 function tilemap:_buildSceneTilemap(scene)
-    -- Resolve sprite objects for all defs
-    local spriteTable = {}  -- [tileId] = frame1 (for single-sprite tiles)
+    local spriteTable = {}
     local solidTiles = {}
     local tileProperties = {}
 
@@ -383,7 +385,6 @@ function tilemap:_buildSceneTilemap(scene)
         if def.spritePath then
             local spr = self._sprites[def.spritePath]
             if spr then
-                -- sprite table keyed by id, value = full sprite (renderer picks frame)
                 spriteTable[id] = spr
             end
         end
@@ -393,13 +394,12 @@ function tilemap:_buildSceneTilemap(scene)
         if def.type then
             tileProperties[id] = {
                 type = def.type,
-                hL   = def.hL or 0,
-                hR   = def.hR or 0,
+                hL = def.hL or 0,
+                hR = def.hR or 0,
             }
         end
     end
 
-    -- Find the primary collision layer data
     local collisionData = {}
     for _, layer in ipairs(self._layers) do
         if layer.collision then
@@ -409,20 +409,15 @@ function tilemap:_buildSceneTilemap(scene)
     end
 
     scene.tilemap = {
-        -- Multi-layer ordered list used by the new renderer
-        layers         = self._layers,
-
-        -- Single-layer backward-compat fields used by isAreaBlocked()
-        data           = collisionData,
-        sprite         = spriteTable,
-        solidTiles     = solidTiles,
+        layers = self._layers,
+        data = collisionData,
+        sprite = spriteTable,
+        solidTiles = solidTiles,
         tileProperties = tileProperties,
-        tileW          = self.tileW,
-        tileH          = self.tileH,
-
-        -- Reference back so scene helpers can call map methods
-        _map           = self,
+        tileW = self.tileW,
+        tileH = self.tileH,
+        _map = self,
     }
 end
 
-return tilemap
+return TilemapModule
