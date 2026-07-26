@@ -458,8 +458,10 @@ local function loader(name)
     out[#out + 1] = [[
     local source = sources[name]
         or error("Obsidian: module not bundled: " .. tostring(name), 0)
+    -- Same contract as src/init.lua: modules run in the caller's environment,
+    -- so CraftOS-provided globals such as shell stay visible to them.
     local chunk = assert(load(source,
-        "@obsidian/" .. (paths[name] or name) .. ".lua"))
+        "@obsidian/" .. (paths[name] or name) .. ".lua", nil, _ENV))
     loading[name] = true
     local result = chunk(loader, name)
     loading[name] = nil

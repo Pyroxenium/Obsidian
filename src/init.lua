@@ -69,7 +69,7 @@ local function loader(name)
 
     for _, path in ipairs(candidates) do
         if fs.exists(path) and not fs.isDir(path) then
-            local chunk, err = loadfile(path)
+            local chunk, err = loadfile(path, nil, _ENV)
             if not chunk then
                 error("Obsidian: cannot load " .. name .. ": " .. tostring(err), 0)
             end
