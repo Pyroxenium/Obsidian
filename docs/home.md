@@ -4,8 +4,6 @@ Obsidian is a 2D game engine for **CC:Tweaked**. It combines an Entity
 Component System with a retained renderer, so game logic stays decoupled from
 data while drawing keeps the terminal redraws down to what actually changed.
 
-![Obsidian showcase](https://pyroxenium.github.io/Obsidian/preview.gif)
-
 ## Features
 
 - **ECS architecture:** entities, components and systems, with a spatial grid
