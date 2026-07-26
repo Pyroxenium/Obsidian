@@ -491,7 +491,6 @@ end
 --   server.enableAuth(players, {
 --       minNameLen  = 3,   -- default 3
 --       maxNameLen  = 16,  -- default 16
---       minPwLen    = 4,   -- default 4
 --       onLogin     = function(clientId, profile) end,   -- optional
 --       onRegister  = function(clientId, profile) end,   -- optional
 --       onLogout    = function(clientId, profile) end,   -- optional
@@ -501,12 +500,18 @@ end
 --   if not server.auth.isLoggedIn(clientId) then
 --       server.send(clientId, "AUTH_REQUIRED", {}); return
 --   end
+--
+-- Security note: clients send an already-hashed password, so the server never
+-- sees the plaintext and cannot judge its length or strength. Any password
+-- policy has to be enforced client-side before hashing. The stored hash is
+-- effectively the credential -- anyone who can read the collection file can
+-- authenticate as that player -- so treat the database as a secret, and do not
+-- rely on this layer for anything beyond casual in-game accounts.
 
 --- Auth config structure
 ---@class AuthOptions
 ---@field minNameLen? number Minimum allowed username length (default 3)
 ---@field maxNameLen? number Maximum allowed username length (default 16)
----@field minPwLen? number Minimum allowed password length (default 4)
 ---@field onLogin? fun(clientId: number, profile: ServerProfile) Optional callback fired after successful login
 ---@field onRegister? fun(clientId: number, profile: ServerProfile) Optional callback fired after successful registration
 ---@field onLogout? fun(clientId: number, profile: ServerProfile) Optional callback fired after logout
@@ -557,7 +562,6 @@ function server.enableAuth(db, opts)
 
     local minNameLen = opts.minNameLen or 3
     local maxNameLen = opts.maxNameLen or 16
-    local minPwLen = opts.minPwLen or 4
 
     _handlers["REGISTER"] = function(clientId, data)
         local name = tostring(data.name or "")
@@ -574,9 +578,11 @@ function server.enableAuth(db, opts)
                 { message = "Name may only contain letters, numbers, - and _" })
             return
         end
+        -- Only the presence of a hash can be checked here; its length says
+        -- nothing about the password behind it. See the note above.
         if #passwordHash == 0 then
             server.send(clientId, "REGISTER_FAILED",
-                { message = "Password must be at least " .. minPwLen .. " characters." })
+                { message = "No password supplied." })
             return
         end
         if _auth.db:findOne({ name = name }) then
@@ -905,7 +911,7 @@ local function _runTick()
 end
 
 --- Process a single raw OS event. Called by server.run() internally or by the
--- Engine event loop for non-blocking integrated use.
+--- Engine event loop for non-blocking integrated use.
 ---@param rawEvent table The raw event table as returned by os.pullEventRaw()
 function server.processEvent(rawEvent)
     local evName = rawEvent[1]
@@ -919,7 +925,7 @@ function server.processEvent(rawEvent)
 end
 
 --- Start the server without blocking. Events must be fed via server.processEvent()
--- or by calling server.run(). Returns false if server.init() was not called first.
+--- or by calling server.run(). Returns false if server.init() was not called first.
 ---@return boolean success True if the server started successfully, false if server.init() was not called
 function server.start()
     if not _protocol then
@@ -943,7 +949,7 @@ function server.start()
 end
 
 --- Run the server loop (blocking, for dedicated server computers).
--- Equivalent to server.start() followed by a manual os.pullEventRaw() loop.
+--- Equivalent to server.start() followed by a manual os.pullEventRaw() loop.
 function server.run()
     if not server.start() then return end
     while _running do

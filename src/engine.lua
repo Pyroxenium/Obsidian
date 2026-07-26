@@ -120,13 +120,15 @@ function Engine.addRenderLayer(name, zIndex)
     return Engine.buffer:addLayer(name, zIndex)
 end
 
+--- Look up a render layer created with `Engine.addRenderLayer`.
 ---@param name string Layer name
 ---@return table|nil layer
 function Engine.getRenderLayer(name)
     return Engine.buffer:getLayer(name)
 end
 
----@param layerOrName table|string
+--- Remove a render layer. The engine's default layer cannot be removed.
+---@param layerOrName table|string Layer instance or its name
 ---@return boolean removed
 function Engine.removeRenderLayer(layerOrName)
     return Engine.buffer:removeLayer(layerOrName)
@@ -257,7 +259,9 @@ function Engine.setScene(scene)
         state.activeScene.event:emit("load")
     end
 
-    Engine.logger.info("Scene changed: " .. (state.activeScene.name or "Unnamed"))
+    -- setScene(nil) is a legitimate way to tear the active scene down.
+    Engine.logger.info("Scene changed: "
+        .. (state.activeScene and (state.activeScene.name or "Unnamed") or "none"))
 end
 
 --- Get the currently active scene
@@ -405,7 +409,7 @@ function Engine.isConsoleEnabled()
     return state.consoleEnabled
 end
 
--- Convenience method to disable console
+--- Disable the in-game console. Shorthand for `Engine.enableConsole(false)`.
 function Engine.disableConsole()
     Engine.enableConsole(false)
 end

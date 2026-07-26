@@ -244,11 +244,6 @@ end
 -- ─── Container draw ───────────────────────────────────────────────────────────
 
 --- Draw a container and all its visible, clipped children.
--- @param buf             Buffer instance
--- @param el              Container element table
--- @param rx, ry          Absolute render position
--- @param ctx             UI context (for pressedElement / focusedElement)
--- @param rowsToRestore   Table populated with touched row indices
 ---@param buf Buffer
 ---@param el table Container element table
 ---@param rx number Absolute render X

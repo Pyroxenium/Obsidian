@@ -62,6 +62,12 @@ jobs:
       - name: Validate documentation annotations
         run: lua5.4 tools/docgen.lua --check
 
+      # install.lua fetches manifest.txt to know which source files to pull.
+      # Generated rather than hand-maintained: a file added to src/ but missing
+      # here would produce a source install that is silently incomplete.
+      - name: Generate source manifest
+        run: find src -name '*.lua' | sort > manifest.txt
+
       - name: Build release bundles
         run: |
           mkdir -p "$RUNNER_TEMP/obsidian-bundle"
@@ -103,14 +109,14 @@ jobs:
               --exec "local ok = shell.run('smoketest.lua'); os.shutdown(ok and 0 or 1)"
           done
 
-      - name: Update committed bundles
+      - name: Update committed bundles and manifest
         if: github.event_name == 'push'
         run: |
           mkdir -p bundle
           cp "$RUNNER_TEMP"/obsidian-bundle/*.lua bundle/
-          git add bundle
+          git add bundle manifest.txt
           if git diff --cached --quiet; then
-            echo "bundles already up to date"
+            echo "bundles and manifest already up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"

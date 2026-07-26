@@ -153,10 +153,16 @@ function color.encode(value, default)
     return idx ~= nil and char(idx) or nil
 end
 
+--- Resolve a public colour to its registry index without encoding it.
+---@param value any Blit character, colors.* value, RGB handle or "#RRGGBB"
+---@return number|nil index Registry index, or nil for a transparent value
 function color.indexOf(value)
     return indexOf(value)
 end
 
+--- Look up the RGB components a registry index stands for.
+---@param index number Registry index
+---@return table|nil rgb Array of three components in the range 0-1
 function color.getRGB(index)
     return registry[index]
 end

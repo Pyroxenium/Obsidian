@@ -242,12 +242,15 @@ function CameraInstance:flash(color, duration)
     self._flashDuration = duration or 0.2
 end
 
+--- Whether a shake started with `shake()` is still running.
 --- @param self CameraInstance
 --- @return boolean
 function CameraInstance:isShaking()
     return self._shakeDuration > 0
 end
 
+--- Current shake displacement, to be added to the camera position when
+--- rendering. Returns zero offsets while no shake is active.
 --- @param self CameraInstance
 --- @return number shakeX World-space pixel offset this frame
 --- @return number shakeY World-space pixel offset this frame
@@ -255,12 +258,14 @@ function CameraInstance:getShakeOffset()
     return self._shakeOffsetX, self._shakeOffsetY
 end
 
+--- Whether a screen flash started with `flash()` is still running.
 --- @param self CameraInstance
 --- @return boolean
 function CameraInstance:isFlashing()
     return self._flashDuration > 0
 end
 
+--- Colour the scene overlays while a flash is active.
 --- @param self CameraInstance
 --- @return string CC blit color character
 function CameraInstance:getFlashColor()

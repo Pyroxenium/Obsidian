@@ -329,6 +329,7 @@ function flimg.rleEncode(data)
     return table.concat(out)
 end
 
+--- PackBits decoder, the counterpart to `rleEncode`.
 function flimg.rleDecode(data, expectedLength)
     if type(data) ~= "string" then fail("rleDecode expects a string", 2) end
     local reader, out, produced = Reader.new(data), {}, 0
@@ -660,10 +661,13 @@ local function writeFile(path, data)
     handle:close()
 end
 
+--- Reads and decodes a .flimg file. Works with the CraftOS fs API and with
+--- plain Lua io.
 function flimg.load(path)
     return flimg.decode(readFile(path))
 end
 
+--- Encodes an image and writes it to a .flimg file, returning the byte count.
 function flimg.save(path, image, options)
     local data = flimg.encode(image, options)
     writeFile(path, data)
@@ -683,7 +687,7 @@ local function overlaySpan(target, source, targetX, sourceX, length)
 end
 
 --- Composes one canonical frame into canvas-sized palette-index rows.
--- For cell images each result row is {text, foreground, background}.
+--- For cell images each result row is {text, foreground, background}.
 function flimg.compose(image, frameIndex)
     image = image.format == "FLIMG" and image or normalizeImage(image)
     local frame = image.frames[frameIndex or 1]
@@ -784,8 +788,8 @@ local function nativeIndexOf(value)
 end
 
 --- Converts an Obsidian/OSF sprite table to a cell-mode FLIMG image.
--- Numeric power-of-two colors are interpreted as colors.* constants. Other
--- numeric values and #RRGGBB strings are stored as RGB colors.
+--- Numeric power-of-two colors are interpreted as colors.* constants. Other
+--- numeric values and #RRGGBB strings are stored as RGB colors.
 function flimg.fromSprite(sprite, options)
     options = options or {}
     if type(sprite) ~= "table" then fail("invalid sprite table", 2) end

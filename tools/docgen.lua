@@ -141,6 +141,13 @@ local skip = {
     ["core/debug"] = true, -- internal shared state table
 }
 
+-- Owner symbols that are internal plumbing rather than API. Methods on them
+-- are skipped like "_"-prefixed ones; this covers helpers whose names cannot
+-- carry that prefix because they are constructed as classes.
+local privateOwners = {
+    Reader = true, -- flimg's binary reader
+}
+
 -- Owner symbol in the source -> documented @class name, for the cases where
 -- the two differ. A mapping is only applied when that @class actually exists
 -- somewhere in src/, so this table can never invent a type that isn't real;
@@ -422,7 +429,7 @@ local function parseFile(sourcePath, displayName)
         do
             local owner, sep, methodName, params =
                 line:match("^function%s+([%w_]+)([:%.])([%w_]+)%s*%(([^%)]*)%)")
-            if owner and methodName:sub(1, 1) ~= "_" then
+            if owner and methodName:sub(1, 1) ~= "_" and not privateOwners[owner] then
                 local doc = parseDocBlock(pending)
                 -- Keyed by the symbol alone, so that a constructor written as
                 -- "Brain.new" and instance methods written as "Brain:update"

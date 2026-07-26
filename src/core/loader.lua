@@ -202,7 +202,8 @@ function loader.loadSprite(path)
 end
 
 --- Loads a binary FLIMG image. Pixel images retain their virtual 2x3 data;
--- draw them with buffer:drawImage(image, x, y, frame).
+--- draw them with buffer:drawImage(image, x, y, frame). Decoded images are
+--- cached by resolved path.
 ---@param path string
 ---@return table|nil image
 ---@return string? error

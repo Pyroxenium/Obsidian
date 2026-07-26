@@ -31,9 +31,26 @@ local move = table.move or function(source, first, last, targetStart, target)
     return target
 end
 
+--- The compositor. Owns the terminal target, the stack of layers and the
+--- palette mapper, and turns them into blit calls on `present()`. All legacy
+--- drawing methods are delegated to the opaque default layer, so a Buffer can
+--- be used exactly like a single surface.
+---@class Buffer
+---@field name string Name of the default layer ("default")
+---@field BufferModule table Back-reference to the module table
 local Buffer = {}
 Buffer.__index = Buffer
 
+--- Historical name for a Buffer instance, used across the engine's annotations.
+---@alias BufferInstance Buffer
+
+--- One drawing layer inside a Buffer. Cells left untouched on a transparent
+--- surface stay nil and let lower layers show through; the default layer is
+--- opaque and always resolves to a character, foreground and background.
+---@class Surface
+---@field name string Unique layer name
+---@field zIndex number Lower values are composed first
+---@field visible boolean Whether the layer takes part in composition
 local Surface = {}
 Surface.__index = Surface
 
@@ -235,14 +252,22 @@ end
 -- Surface public API
 -- ---------------------------------------------------------------------------
 
+--- Size of the layer in terminal cells.
+---@return number, number size width and height in cells
 function Surface:getSize()
     return self._owner._w, self._owner._h
 end
 
+--- Size of the layer in subpixels: two per cell horizontally, three vertically.
+---@return number, number size width and height in subpixels
 function Surface:getVirtualSize()
     return self._owner._w * 2, self._owner._h * 3
 end
 
+--- Show or hide the layer. A hidden layer keeps its content but is skipped
+--- during composition.
+---@param visible boolean
+---@return Surface self
 function Surface:setVisible(visible)
     visible = visible ~= false
     if self.visible ~= visible then
@@ -252,6 +277,10 @@ function Surface:setVisible(visible)
     return self
 end
 
+--- Change the composition order. Layers with equal z keep their creation
+--- order.
+---@param zIndex number Lower values are composed first
+---@return Surface self
 function Surface:setZIndex(zIndex)
     zIndex = tonumber(zIndex) or 0
     if self.zIndex ~= zIndex then
@@ -263,6 +292,13 @@ function Surface:setZIndex(zIndex)
 end
 
 --- Push a translated local coordinate system and intersect its clip rectangle.
+--- Subsequent draw calls treat (1,1) as (x,y) and are clipped to the given
+--- box. Restore the previous context with `pop()`.
+---@param x number Origin x in the current coordinate system
+---@param y number Origin y in the current coordinate system
+---@param width number Width of the clip rectangle in cells
+---@param height number Height of the clip rectangle in cells
+---@return Surface self
 function Surface:push(x, y, width, height)
     x, y = math.floor(x or 1), math.floor(y or 1)
     width, height = math.floor(width or 0), math.floor(height or 0)
@@ -281,6 +317,9 @@ function Surface:push(x, y, width, height)
     return self
 end
 
+--- Restore the coordinate system and clip rectangle saved by the matching
+--- `push()`. Errors on an unbalanced call.
+---@return Surface self
 function Surface:pop()
     local n, stack = self._stackN, self._stack
     if n < 6 then error("Obsidian Buffer: clip stack underflow", 2) end
@@ -292,7 +331,12 @@ function Surface:pop()
     return self
 end
 
---- Legacy absolute clipping API.
+--- Legacy absolute clipping API. Prefer `push()`/`pop()`, which nest.
+---@param x1 number|nil Left edge in cells (default 1)
+---@param y1 number|nil Top edge in cells (default 1)
+---@param x2 number|nil Right edge in cells (default buffer width)
+---@param y2 number|nil Bottom edge in cells (default buffer height)
+---@return Surface self
 function Surface:setClip(x1, y1, x2, y2)
     local owner = self._owner
     self._clipX1 = math.max(1, math.floor(x1 or 1))
@@ -302,6 +346,8 @@ function Surface:setClip(x1, y1, x2, y2)
     return self
 end
 
+--- Drop any clip rectangle set by `setClip()` and draw to the whole layer.
+---@return Surface self
 function Surface:clearClip()
     local owner = self._owner
     self._clipX1, self._clipY1 = 1, 1
@@ -309,6 +355,13 @@ function Surface:clearClip()
     return self
 end
 
+--- Reset every cell of the layer, discarding subpixels. On a transparent
+--- layer, omitting an argument clears that channel back to transparent; on the
+--- opaque default layer the omitted channels fall back to space on black.
+---@param charValue string|nil Fill character
+---@param fore any|nil Foreground colour (blit char, colors.* value, RGB handle or "#RRGGBB")
+---@param back any|nil Background colour
+---@return Surface self
 function Surface:clear(charValue, fore, back)
     local owner = self._owner
     local textValue, fgValue, bgValue
@@ -331,6 +384,14 @@ function Surface:clear(charValue, fore, back)
     return self
 end
 
+--- Draw a string, clipped to the current clip rectangle. Omitting a colour
+--- leaves that channel untouched on a transparent layer.
+---@param x number Column, 1-based, in the current coordinate system
+---@param y number Row, 1-based
+---@param text string Text to draw
+---@param fore any|nil Foreground colour
+---@param back any|nil Background colour
+---@return Surface self
 function Surface:drawText(x, y, text, fore, back)
     x, y = math.floor(x or 1) + self._ox, math.floor(y or 1) + self._oy
     text = tostring(text or "")
@@ -358,6 +419,12 @@ function Surface:drawText(x, y, text, fore, back)
     return self
 end
 
+--- Draw a full-width row, padding with spaces or truncating as needed.
+---@param y number Row, 1-based
+---@param text string Text to draw
+---@param fore any|nil Foreground colour
+---@param back any|nil Background colour
+---@return Surface self
 function Surface:drawLine(y, text, fore, back)
     local width = self._owner._w
     text = tostring(text or "")
@@ -366,6 +433,15 @@ function Surface:drawLine(y, text, fore, back)
     return self:drawText(1, y, text, fore, back)
 end
 
+--- Fill a rectangle with a single character.
+---@param x number Left column, 1-based
+---@param y number Top row, 1-based
+---@param width number Width in cells
+---@param height number Height in cells
+---@param charValue string|nil Fill character (default space)
+---@param fore any|nil Foreground colour
+---@param back any|nil Background colour
+---@return Surface self
 function Surface:drawRect(x, y, width, height, charValue, fore, back)
     width, height = math.floor(width or 0), math.floor(height or 0)
     if width <= 0 or height <= 0 then return self end
@@ -380,6 +456,14 @@ function Surface:drawRect(x, y, width, height, charValue, fore, back)
     return self
 end
 
+--- Draw one frame of an `.obs` sprite. Spaces in a layer are transparent, so
+--- a cell keeps whatever was already there.
+---@param frame SpriteFrame Frame table: [1]=chars, [2]=foreground, [3]=background
+---@param x number World x of the sprite's top-left corner
+---@param y number World y of the sprite's top-left corner
+---@param camX number|nil Camera x subtracted from the position
+---@param camY number|nil Camera y subtracted from the position
+---@return Surface self
 function Surface:drawSprite(frame, x, y, camX, camY)
     if not frame or not frame[1] or not frame[2] or not frame[3] then return self end
     local sx = math.floor((x or 1) - (camX or 0)) + self._ox
@@ -441,8 +525,15 @@ local function imagePalette(image)
 end
 
 --- Draws a FLIMG image at terminal-cell coordinates. Pixel-mode images keep
--- their virtual pixels until the surface is composed; cell-mode images apply
--- channel transparency directly.
+--- their virtual pixels until the surface is composed; cell-mode images apply
+--- channel transparency directly. Composed frames are cached on the image.
+---@param image table Decoded FLIMG image from `loader.loadImage()`
+---@param x number Cell column of the top-left corner
+---@param y number Cell row of the top-left corner
+---@param frameIndex number|nil Frame to draw, clamped to the image (default 1)
+---@param camX number|nil Camera x subtracted from the position
+---@param camY number|nil Camera y subtracted from the position
+---@return Surface self
 function Surface:drawImage(image, x, y, frameIndex, camX, camY)
     if type(image) ~= "table" or image.format ~= "FLIMG" then
         error("Obsidian: drawImage expects a decoded FLIMG image", 2)
@@ -510,6 +601,13 @@ function Surface:drawImage(image, x, y, frameIndex, camX, camY)
     return self
 end
 
+--- Set one subpixel. Six subpixels share a cell (2 wide, 3 tall) and are
+--- compiled into a mosaic character when the buffer is composed.
+---@param vx number Subpixel column, 1-based
+---@param vy number Subpixel row, 1-based
+---@param value any Colour of the subpixel
+---@param bgValue any|nil Colour for the surrounding subpixels of that cell
+---@return Surface self
 function Surface:drawSubpixel(vx, vy, value, bgValue)
     vx, vy = math.floor(vx or 1) + self._ox * 2,
         math.floor(vy or 1) + self._oy * 3
@@ -528,6 +626,14 @@ function Surface:drawSubpixel(vx, vy, value, bgValue)
     return self
 end
 
+--- Fill a rectangle in subpixel space.
+---@param vx number Left subpixel column, 1-based
+---@param vy number Top subpixel row, 1-based
+---@param width number Width in subpixels
+---@param height number Height in subpixels
+---@param value any Fill colour
+---@param bgValue any|nil Colour for untouched subpixels of the covered cells
+---@return Surface self
 function Surface:drawSubpixelRect(vx, vy, width, height, value, bgValue)
     width, height = math.floor(width or 0), math.floor(height or 0)
     if width <= 0 or height <= 0 then return self end
@@ -555,6 +661,13 @@ function Surface:drawSubpixelRect(vx, vy, width, height, value, bgValue)
     return self
 end
 
+--- Draw a Bresenham line in subpixel space.
+---@param x1 number Start subpixel column
+---@param y1 number Start subpixel row
+---@param x2 number End subpixel column
+---@param y2 number End subpixel row
+---@param value any Line colour
+---@return Surface self
 function Surface:drawSubpixelLine(x1, y1, x2, y2, value)
     x1, y1 = math.floor(x1) + self._ox * 2, math.floor(y1) + self._oy * 3
     x2, y2 = math.floor(x2) + self._ox * 2, math.floor(y2) + self._oy * 3
@@ -584,6 +697,8 @@ end
 
 Surface.drawPixel = Surface.drawSubpixel
 
+--- Discard every subpixel on the layer, leaving cell content untouched.
+---@return Surface self
 function Surface:clearSubpixels()
     if self._spX1 <= self._spX2 and self._spY1 <= self._spY2 then
         markDirty(self, self._spX1, self._spY1, self._spX2, self._spY2)
@@ -594,6 +709,10 @@ function Surface:clearSubpixels()
     return self
 end
 
+--- Snapshot the layer into a plain table, reusing its arrays when possible.
+--- Scenes use this to cache their static background.
+---@param target table Table to fill; receives t, f, b and the subpixel planes
+---@return table target the same table, now holding the snapshot
 function Surface:copyTo(target)
     target.t, target.f, target.b = target.t or {}, target.f or {}, target.b or {}
     local width, height = self._owner._w, self._owner._h
@@ -615,6 +734,9 @@ function Surface:copyTo(target)
     return target
 end
 
+--- Restore a snapshot produced by `copyTo()` over the whole layer.
+---@param source table Snapshot table
+---@return Surface self
 function Surface:copyFrom(source)
     local width, height = self._owner._w, self._owner._h
     for y = 1, height do
@@ -639,6 +761,11 @@ function Surface:copyFrom(source)
     return self
 end
 
+--- Restore a single row from a snapshot. This is the partial-redraw path:
+--- only rows an entity touched last frame need to be put back.
+---@param y number Row to restore, 1-based
+---@param source table Snapshot table produced by `copyTo()`
+---@return Surface self
 function Surface:restoreLine(y, source)
     local width, height = self._owner._w, self._owner._h
     if y < 1 or y > height or not source.t or not source.t[y] then return self end
@@ -669,6 +796,9 @@ function Surface:restoreLine(y, source)
     return self
 end
 
+--- Compose and flush the owning buffer. Provided so a layer can stand in for
+--- a Buffer in code that only draws and presents.
+---@return Buffer owner
 function Surface:present()
     return self._owner:present()
 end
@@ -685,6 +815,12 @@ local function initComposite(self)
     for y = 1, self._h do self._dirty[y] = true end
 end
 
+--- Create a buffer bound to a terminal-like target. Called with a single table
+--- argument, that argument is taken as the target and the size is read from it.
+---@param width number|table|nil Width in cells, or the target terminal
+---@param height number|nil Height in cells
+---@param targetTerm table|nil Terminal-like target (default `term`)
+---@return Buffer buffer
 function buffer.new(width, height, targetTerm)
     if type(width) == "table" then
         targetTerm, width, height = width, nil, nil
@@ -720,14 +856,23 @@ function Buffer:_markFullComposition()
     for y = 1, self._h do self._dirty[y] = true end
 end
 
+--- Size of the buffer in terminal cells.
+---@return number, number size width and height in cells
 function Buffer:getSize()
     return self._w, self._h
 end
 
+--- Size of the buffer in subpixels: two per cell horizontally, three vertically.
+---@return number, number size width and height in subpixels
 function Buffer:getVirtualSize()
     return self._w * 2, self._h * 3
 end
 
+--- Resize the buffer. Every layer is reset to empty, so redraw after calling
+--- this; the engine does so on `term_resize`.
+---@param width number New width in cells
+---@param height number New height in cells
+---@return Buffer self
 function Buffer:setSize(width, height)
     width, height = math.floor(width), math.floor(height)
     if width < 1 or height < 1 then return self end
@@ -738,10 +883,17 @@ function Buffer:setSize(width, height)
     return self
 end
 
+--- The terminal-like object this buffer writes to.
+---@return table target
 function Buffer:getTarget()
     return self._term
 end
 
+--- Add a transparent layer. Cells it never touches let lower layers show
+--- through. Errors if the name is already taken.
+---@param name string Unique layer name
+---@param zIndex number|nil Lower values are composed first (default 0)
+---@return Surface layer
 function Buffer:addLayer(name, zIndex)
     assert(type(name) == "string" and name ~= "", "Buffer:addLayer requires a name")
     if self._layerByName[name] then
@@ -757,16 +909,24 @@ end
 
 Buffer.createLayer = Buffer.addLayer
 
+--- Look a layer up by name.
+---@param name string Layer name
+---@return Surface|nil layer
 function Buffer:getLayer(name)
     return self._layerByName[name]
 end
 
+--- All layers in composition order, as a copy that is safe to iterate.
+---@return Surface[] layers
 function Buffer:getLayers()
     local result = {}
     for i, layer in ipairs(self._layers) do result[i] = layer end
     return result
 end
 
+--- Remove a layer. The default layer cannot be removed.
+---@param layerOrName Surface|string Layer instance or its name
+---@return boolean removed false if it was unknown or the default layer
 function Buffer:removeLayer(layerOrName)
     local layer = type(layerOrName) == "string" and self._layerByName[layerOrName]
         or layerOrName
@@ -779,6 +939,8 @@ function Buffer:removeLayer(layerOrName)
     return true
 end
 
+--- The opaque layer that all the buffer's own drawing methods delegate to.
+---@return Surface layer
 function Buffer:getDefaultLayer()
     return self._default
 end
@@ -879,6 +1041,10 @@ local function scanColors(row, used)
     for x = 1, #row do used[row:byte(x)] = true end
 end
 
+--- Compose the layers and write the changed rows to the terminal. Rows that
+--- are identical to what is already on screen are skipped, and the palette is
+--- reassigned only for the colours actually visible this frame.
+---@return Buffer self
 function Buffer:present()
     self:_compose()
 
@@ -915,6 +1081,9 @@ end
 
 Buffer.flush = Buffer.present
 
+--- Forget what is currently on screen and force a full redraw on the next
+--- `present()`. Use after something else has written to the terminal.
+---@return Buffer self
 function Buffer:invalidate()
     self._lastT, self._lastF, self._lastB = {}, {}, {}
     self:_markFullComposition()
@@ -922,11 +1091,18 @@ function Buffer:invalidate()
 end
 
 
+--- Put every palette slot this buffer overrode back to its native colour.
+--- The engine calls this on shutdown and before the panic screen.
+---@return Buffer self
 function Buffer:restorePalette()
     self._mapper:restore()
     return self
 end
 
+--- Compile pending subpixels into mosaic characters without flushing to the
+--- terminal. `present()` does this anyway; call it directly only to inspect
+--- the composed result first.
+---@return Buffer self
 function Buffer:compileSubpixels()
     self:_compose()
     return self

@@ -36,8 +36,6 @@ local UI = {}
 ---@field focusedElement table|nil
 
 --- Create a new UI context bound to a Buffer instance.
--- @param buf  Buffer   A Buffer.new() instance
--- @return     context table
 ---@param buf BufferInstance A Buffer.new() instance
 ---@return UIContext
 function UI.new(buf)

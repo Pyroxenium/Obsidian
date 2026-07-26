@@ -15,8 +15,8 @@ M.ELEMENT_FIELDS = {
 M.DIRTY_FIELDS = { z=true, sprite=true, w=true, h=true }
 
 --- Word-wrap `text` to fit within `maxW` columns.
--- Splits on explicit newlines first, then wraps long paragraphs by word.
--- @return table of line strings
+--- Splits on explicit newlines first, then wraps long paragraphs by word.
+--- @return table of line strings
 function M.wrapText(text, maxW)
     local lines = {}
     -- Split into paragraphs on \n
@@ -57,12 +57,12 @@ local function resolveBorders(cfg)
 end
 
 --- Build a flat element table from common parameters.
--- @param name    string   Unique element name
--- @param type_   string   Widget type ("button", "text", "input", …)
--- @param x       number
--- @param y       number
--- @param config  table    Caller-supplied options
--- @return element table
+---@param name string Unique element name
+---@param type_ string Widget type ("button", "text", "input", …)
+---@param x number Column relative to the context origin
+---@param y number Row relative to the context origin
+---@param config table|nil Caller-supplied options
+---@return table element
 function M.make(name, type_, x, y, config)
     local cfg = config or {}
     local bTop, bBot, bLeft, bRight = resolveBorders(cfg)
@@ -102,11 +102,14 @@ function M.make(name, type_, x, y, config)
     return el
 end
 
---- Build a container element table.
--- @param name    string
--- @param x,y     number   Position
--- @param w,h     number   Size (required for containers)
--- @param config  table
+--- Build a container element table. Containers clip and scroll their children.
+---@param name string Unique element name
+---@param x number Column relative to the context origin
+---@param y number Row relative to the context origin
+---@param w number Width in cells (required)
+---@param h number Height in cells (required)
+---@param config table|nil Caller-supplied options
+---@return table element
 function M.makeContainer(name, x, y, w, h, config)
     local cfg = config or {}
     local bTop, bBot, bLeft, bRight = resolveBorders(cfg)

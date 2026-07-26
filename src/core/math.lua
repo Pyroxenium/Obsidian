@@ -252,12 +252,14 @@ function Math.normalizeRaw(x, y)
     return x / length, y / length, length
 end
 
+--- Round to the nearest integer, halves away from zero.
 ---@param val number The value to round
 ---@return number rounded The rounded value
 function Math.round(val)
     return m_floor(val + 0.5)
 end
 
+--- Sign of a number.
 ---@param val number The value to get the sign of
 ---@return number sign The sign of the value: 1 for positive, -1 for negative, 0 for zero
 function Math.sign(val)
