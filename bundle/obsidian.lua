@@ -3980,17 +3980,20 @@ local loader = {
 }
 loader.flimg = flimg
 local function resolvePath(path)
-    if not path or path:sub(1,1) == "/" then return path end
+    if not path then return path, "no path" end
+    if path:sub(1, 1) == "/" then return path, "absolute path" end
     if loader.basePath then
-        return fs.combine(loader.basePath, path)
+        return fs.combine(loader.basePath, path),
+            "basePath '" .. tostring(loader.basePath) .. "'"
     end
-    if shell then
+    if shell and shell.getRunningProgram then
         local runningProg = shell.getRunningProgram()
-        if runningProg then
-            return fs.combine(fs.getDir(runningProg), path)
+        if runningProg and runningProg ~= "" then
+            return fs.combine(fs.getDir(runningProg), path),
+                "directory of " .. runningProg
         end
     end
-    return path
+    return path, "unchanged (no basePath, and no shell to resolve against)"
 end
 function loader.setBasePath(path)
     loader.basePath = path
@@ -4001,9 +4004,10 @@ local function toTable(str)
     return t
 end
 local function _loadFile(path)
-    local fullPath = resolvePath(path)
+    local fullPath, origin = resolvePath(path)
     if not fs.exists(fullPath) then
-        return false, "File not found: " .. fullPath
+        return false, ("File not found: %s (resolved from '%s' via %s)")
+            :format(fullPath, tostring(path), origin)
     end
     local file = fs.open(fullPath, "r")
     if not file then
@@ -4107,9 +4111,12 @@ function loader.loadSprite(path)
     return data
 end
 function loader.loadImage(path)
-    local fullPath = resolvePath(path)
+    local fullPath, origin = resolvePath(path)
     if loader.imageCache[fullPath] then return loader.imageCache[fullPath] end
-    if not fs.exists(fullPath) then return nil, "File not found: " .. fullPath end
+    if not fs.exists(fullPath) then
+        return nil, ("File not found: %s (resolved from '%s' via %s)")
+            :format(fullPath, tostring(path), origin)
+    end
     local handle = fs.open(fullPath, "rb") or fs.open(fullPath, "r")
     if not handle then return nil, "Could not open file: " .. fullPath end
     local raw = handle.readAll()
@@ -8520,8 +8527,10 @@ local function loader(name)
     end
     local source = sources[name]
         or error("Obsidian: module not bundled: " .. tostring(name), 0)
+    -- Same contract as src/init.lua: modules run in the caller's environment,
+    -- so CraftOS-provided globals such as shell stay visible to them.
     local chunk = assert(load(source,
-        "@obsidian/" .. (paths[name] or name) .. ".lua"))
+        "@obsidian/" .. (paths[name] or name) .. ".lua", nil, _ENV))
     loading[name] = true
     local result = chunk(loader, name)
     loading[name] = nil

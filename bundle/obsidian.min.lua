@@ -1513,18 +1513,22 @@ paths["core.input_mapper"] = "core/input_mapper"
 sources["core.loader"] = [=[
 local ca=...local da=ca("core.logger")local _b=ca("flimg")
 local ab={basePath=nil,spriteCache={},imageCache={},uiCache={},emitterCache={}}ab.flimg=_b
-local function bb(_c)
-if not _c or _c:sub(1,1)=="/"then return _c end
-if ab.basePath then return fs.combine(ab.basePath,_c)end
-if shell then local ac=shell.getRunningProgram()if ac then return
-fs.combine(fs.getDir(ac),_c)end end;return _c end;function ab.setBasePath(_c)ab.basePath=_c end;local function cb(_c)local ac={}for i=1,#_c do
+local function bb(_c)if not _c then return _c,"no path"end;if _c:sub(1,1)=="/"then return _c,
+"absolute path"end;if ab.basePath then
+return fs.combine(ab.basePath,_c),
+"basePath '"..tostring(ab.basePath).."'"end
+if
+shell and shell.getRunningProgram then local ac=shell.getRunningProgram()
+if ac and ac~=""then return
+fs.combine(fs.getDir(ac),_c),"directory of "..ac end end;return _c,"unchanged (no basePath, and no shell to resolve against)"end;function ab.setBasePath(_c)ab.basePath=_c end;local function cb(_c)local ac={}for i=1,#_c do
 ac[i]=_c:sub(i,i)end;return ac end
 local function db(_c)
-local ac=bb(_c)
-if not fs.exists(ac)then return false,"File not found: "..ac end;local bc=fs.open(ac,"r")if not bc then
-return false,"Could not open file: "..ac end;local cc=bc.readAll()bc.close()
-local dc,_d=pcall(textutils.unserialize,cc)
-if not dc or _d==nil then return false,"Failed to unserialize: "..ac end;return true,_d,ac end
+local ac,bc=bb(_c)
+if not fs.exists(ac)then return false,
+("File not found: %s (resolved from '%s' via %s)"):format(ac,tostring(_c),bc)end;local cc=fs.open(ac,"r")if not cc then
+return false,"Could not open file: "..ac end;local dc=cc.readAll()cc.close()
+local _d,ad=pcall(textutils.unserialize,dc)
+if not _d or ad==nil then return false,"Failed to unserialize: "..ac end;return true,ad,ac end
 function ab._processSprite(_c)if not _c then return end
 for i=1,(_c.frameCount or#_c)do local ac=_c[i]if ac then
 for layer=1,3 do if ac[layer]then
@@ -1563,14 +1567,15 @@ da.error("Loader: Validation error in "..
 _c..": "..ad)return nil,ad end
 ab._processSprite(cc)cc.path=_c;ab.spriteCache[dc]=cc
 da.info("Loader: Cached sprite: "..dc)return cc end
-function ab.loadImage(_c)local ac=bb(_c)
+function ab.loadImage(_c)local ac,bc=bb(_c)
 if ab.imageCache[ac]then return ab.imageCache[ac]end
-if not fs.exists(ac)then return nil,"File not found: "..ac end;local bc=fs.open(ac,"rb")or fs.open(ac,"r")if not bc then return nil,
+if not fs.exists(ac)then return nil,
+("File not found: %s (resolved from '%s' via %s)"):format(ac,tostring(_c),bc)end;local cc=fs.open(ac,"rb")or fs.open(ac,"r")if not cc then return nil,
 "Could not open file: "..ac end
-local cc=bc.readAll()bc.close()local dc,_d=pcall(_b.decode,cc)if not dc then
-da.error("Loader: "..tostring(_d))return nil,tostring(_d)end;_d.path=_c
-ab.imageCache[ac]=_d
-da.info("Loader: Cached FLIMG image: "..ac)return _d end
+local dc=cc.readAll()cc.close()local _d,ad=pcall(_b.decode,dc)if not _d then
+da.error("Loader: "..tostring(ad))return nil,tostring(ad)end;ad.path=_c
+ab.imageCache[ac]=ad
+da.info("Loader: Cached FLIMG image: "..ac)return ad end
 function ab.loadUI(_c)local ac=bb(_c)
 if ab.uiCache[ac]then return ab.uiCache[ac]end;local bc,cc,dc=db(_c)
 if not bc then da.error("Loader: "..cc)return nil,cc end;ab.uiCache[dc]=cc;return cc end
@@ -3302,8 +3307,10 @@ local function loader(name)
     end
     local source = sources[name]
         or error("Obsidian: module not bundled: " .. tostring(name), 0)
+    -- Same contract as src/init.lua: modules run in the caller's environment,
+    -- so CraftOS-provided globals such as shell stay visible to them.
     local chunk = assert(load(source,
-        "@obsidian/" .. (paths[name] or name) .. ".lua"))
+        "@obsidian/" .. (paths[name] or name) .. ".lua", nil, _ENV))
     loading[name] = true
     local result = chunk(loader, name)
     loading[name] = nil
