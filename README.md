@@ -6,6 +6,8 @@ drawing is reduced to the cells that actually changed.
 
 **[API reference and guides](https://pyroxenium.github.io/Obsidian/)**
 
+![Obsidian showcase](https://pyroxenium.github.io/Obsidian/preview.gif)
+
 ## Features
 
 * **ECS architecture:** entities, components and systems, backed by a spatial
