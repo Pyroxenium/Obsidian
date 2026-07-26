@@ -101,18 +101,27 @@ Flash the screen with a solid color overlay for a short duration.
 
 ### CameraInstance:isShaking()
 
+Whether a shake started with `shake()` is still running.
+
 - **returns** (`boolean`) 
 
 ### CameraInstance:getShakeOffset()
+
+Current shake displacement, to be added to the camera position when
+rendering. Returns zero offsets while no shake is active.
 
 - **returns** **shakeX** (`number`) World-space pixel offset this frame
 - **returns** **shakeY** (`number`) World-space pixel offset this frame
 
 ### CameraInstance:isFlashing()
 
+Whether a screen flash started with `flash()` is still running.
+
 - **returns** (`boolean`) 
 
 ### CameraInstance:getFlashColor()
+
+Colour the scene overlays while a flash is active.
 
 - **returns** (`string`) CC blit color character
 

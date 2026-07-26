@@ -16,6 +16,8 @@ Draw a single non-container element at absolute position (rx, ry).
 
 ### render.drawContainer(buf, el, rx, ry, ctx, rowsToRestore)
 
+Draw a container and all its visible, clipped children.
+
 - **buf** (`Buffer`) 
 - **el** (`table`) Container element table
 - **rx** (`number`) Absolute render X

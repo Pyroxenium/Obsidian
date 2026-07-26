@@ -76,6 +76,10 @@ Load a sprite (.obs file) from disk or cache.
 
 ### loader.loadImage(path)
 
+Loads a binary FLIMG image. Pixel images retain their virtual 2x3 data;
+draw them with buffer:drawImage(image, x, y, frame). Decoded images are
+cached by resolved path.
+
 - **path** (`string`) 
 
 - **returns** **image** (`table|nil`) 

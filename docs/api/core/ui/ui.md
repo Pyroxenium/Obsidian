@@ -19,6 +19,8 @@
 
 ### UI.new(buf)
 
+Create a new UI context bound to a Buffer instance.
+
 - **buf** (`BufferInstance`) A Buffer.new() instance
 
 - **returns** (`UIContext`) 

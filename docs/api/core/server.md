@@ -41,7 +41,6 @@ Auth config structure
 | --- | --- | --- |
 | minNameLen *(optional)* | `number` | Minimum allowed username length (default 3) |
 | maxNameLen *(optional)* | `number` | Maximum allowed username length (default 16) |
-| minPwLen *(optional)* | `number` | Minimum allowed password length (default 4) |
 | onLogin *(optional)* | `fun(clientId: number, profile: ServerProfile)` | Optional callback fired after successful login |
 | onRegister *(optional)* | `fun(clientId: number, profile: ServerProfile)` | Optional callback fired after successful registration |
 | onLogout *(optional)* | `fun(clientId: number, profile: ServerProfile)` | Optional callback fired after logout |
@@ -261,10 +260,19 @@ Shut down the server, kick all clients, and close the modem.
 
 ### server.processEvent(rawEvent)
 
+Process a single raw OS event. Called by server.run() internally or by the
+Engine event loop for non-blocking integrated use.
+
 - **rawEvent** (`table`) The raw event table as returned by os.pullEventRaw()
 
 ### server.start()
 
+Start the server without blocking. Events must be fed via server.processEvent()
+or by calling server.run(). Returns false if server.init() was not called first.
+
 - **returns** **success** (`boolean`) True if the server started successfully, false if server.init() was not called
 
 ### server.run()
+
+Run the server loop (blocking, for dedicated server computers).
+Equivalent to server.start() followed by a manual os.pullEventRaw() loop.

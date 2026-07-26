@@ -53,13 +53,17 @@ Engine.buffer's opaque default layer.
 
 ### Engine.getRenderLayer(name)
 
+Look up a render layer created with `Engine.addRenderLayer`.
+
 - **name** (`string`) Layer name
 
 - **returns** **layer** (`table|nil`) 
 
 ### Engine.removeRenderLayer(layerOrName)
 
-- **layerOrName** (`table|string`) 
+Remove a render layer. The engine's default layer cannot be removed.
+
+- **layerOrName** (`table|string`) Layer instance or its name
 
 - **returns** **removed** (`boolean`) 
 
@@ -198,6 +202,8 @@ Check if console is enabled
 - **returns** **isEnabled** (`boolean`) returns true if the in-game console is enabled, false otherwise
 
 ### Engine.disableConsole()
+
+Disable the in-game console. Shorthand for `Engine.enableConsole(false)`.
 
 ### Engine.start()
 

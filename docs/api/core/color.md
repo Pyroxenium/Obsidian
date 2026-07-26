@@ -27,7 +27,19 @@ Encode a public color as a one-byte registry value.
 
 ### color.indexOf(value)
 
+Resolve a public colour to its registry index without encoding it.
+
+- **value** (`any`) Blit character, colors.* value, RGB handle or "#RRGGBB"
+
+- **returns** **index** (`number|nil`) Registry index, or nil for a transparent value
+
 ### color.getRGB(index)
+
+Look up the RGB components a registry index stands for.
+
+- **index** (`number`) Registry index
+
+- **returns** **rgb** (`table|nil`) Array of three components in the range 0-1
 
 ### color.newMapper(t)
 

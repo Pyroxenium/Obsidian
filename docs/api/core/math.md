@@ -97,11 +97,15 @@ Returns nx, ny, length as raw numbers (for callers that need the length too).
 
 ### Math.round(val)
 
+Round to the nearest integer, halves away from zero.
+
 - **val** (`number`) The value to round
 
 - **returns** **rounded** (`number`) The rounded value
 
 ### Math.sign(val)
+
+Sign of a number.
 
 - **val** (`number`) The value to get the sign of
 

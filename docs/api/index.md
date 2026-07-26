@@ -22,7 +22,7 @@ annotations in `src/` and regenerate.
 - [input](core/input.md) — 14 methods
 - [input_mapper](core/input_mapper.md) — 3 methods
 - [loader](core/loader.md) — 7 methods
-- [logger](core/logger.md) — 5 methods
+- [logger](core/logger.md) — 7 methods
 - [math](core/math.md) — 27 methods
 - [network](core/network.md) — 15 methods
 - [particles](core/particles.md) — 7 methods
@@ -46,4 +46,4 @@ annotations in `src/` and regenerate.
 
 ## Formats
 
-- [flimg](flimg.md) — 16 methods
+- [flimg](flimg.md) — 10 methods
