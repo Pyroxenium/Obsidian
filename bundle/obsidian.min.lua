@@ -42,7 +42,8 @@ bc.scene.activeScene=aaa;if dc.activeScene and dc.activeScene.onLoad then
 dc.activeScene:onLoad()end
 if
 dc.activeScene and dc.activeScene.event then dc.activeScene.event:emit("load")end
-bc.logger.info("Scene changed: ".. (dc.activeScene.name or"Unnamed"))end;function bc.getScene()return dc.activeScene end;function bc.transition(aaa,baa)
+bc.logger.info("Scene changed: ".. (
+dc.activeScene and(dc.activeScene.name or"Unnamed")or"none"))end;function bc.getScene()return dc.activeScene end;function bc.transition(aaa,baa)
 dc.transition={target=aaa,duration=baa or 1,elapsed=0,stage="out"}end;function bc.isTransitioning()return
 dc.transition~=nil end;function bc.setViewport(aaa,baa)dc.manualViewport=true
 bc.buffer:setSize(aaa,baa)
@@ -1585,17 +1586,22 @@ da.info("Loader: Asset cache cleared.")end;return ab
 paths["core.loader"] = "core/loader"
 sources["core.logger"] = [=[
 
-local c={history={},maxHistory=8,logFile="obsidian.log",_fileInitialized=false,_consoleHook=nil}local d={INFO="0",WARN="1",ERROR="e",DEBUG="7"}
-function c._add(_a,aa)
-local ba=os.date("%H:%M:%S")
-local ca=string.format("[%s] [%s] %s",ba,_a,tostring(aa))local da={level=_a,text=ca,color=d[_a]or"0"}
-table.insert(c.history,da)
-if#c.history>c.maxHistory then table.remove(c.history,1)end;local _b=c._fileInitialized and"a"or"w"
-local ab=fs.open(c.logFile,_b)
-if ab then c._fileInitialized=true;ab.writeLine(ca)ab.close()end
-if c._consoleHook then c._consoleHook(ca,d[_a]or"0")end end;function c.info(_a)c._add("INFO",_a)end;function c.warn(_a)
-c._add("WARN",_a)end;function c.error(_a)c._add("ERROR",_a)end;function c.debug(_a)
-c._add("DEBUG",_a)end;function c.getHistory()return c.history end;return c
+local d={history={},maxHistory=8,logFile="obsidian.log",level="info",fileEnabled=true,_fileInitialized=false,_consoleHook=nil}local _a={INFO="0",WARN="1",ERROR="e",DEBUG="7"}
+local aa={debug=1,DEBUG=1,info=2,INFO=2,warn=3,WARN=3,error=4,ERROR=4,off=5}
+function d.setLevel(ba)if aa[ba]==nil then
+error("Obsidian logger: unknown level "..tostring(ba),2)end;d.level=ba end;function d.setFileEnabled(ba)d.fileEnabled=ba~=false end
+function d._add(ba,ca)local da=
+aa[d.level]or aa.info
+if(aa[ba]or aa.info)<da then return end;local _b=os.date("%H:%M:%S")
+local ab=string.format("[%s] [%s] %s",_b,ba,tostring(ca))local bb={level=ba,text=ab,color=_a[ba]or"0"}
+table.insert(d.history,bb)
+if#d.history>d.maxHistory then table.remove(d.history,1)end
+if d.fileEnabled then local cb=d._fileInitialized and"a"or"w"
+local db=fs.open(d.logFile,cb)
+if db then d._fileInitialized=true;db.writeLine(ab)db.close()end end
+if d._consoleHook then d._consoleHook(ab,_a[ba]or"0")end end;function d.info(ba)d._add("INFO",ba)end;function d.warn(ba)
+d._add("WARN",ba)end;function d.error(ba)d._add("ERROR",ba)end;function d.debug(ba)
+d._add("DEBUG",ba)end;function d.getHistory()return d.history end;return d
 ]=]
 paths["core.logger"] = "core/logger"
 sources["core.math"] = [=[
@@ -2499,60 +2505,60 @@ a_c=( (a_c*33)+string.byte(__c,i))%2147483647 end;return tostring(a_c)end;local 
 for b_c,c_c in pairs(__c)do if b_c~="passwordHash"then a_c[b_c]=c_c end end;return a_c end
 function bca.enableAuth(__c,a_c)
 assert(__c,"server.enableAuth: db must be an Obsidian DB collection")a_c=a_c or{}cca.db=__c;cca.opts=a_c;cca.enabled=true
-local b_c=a_c.minNameLen or 3;local c_c=a_c.maxNameLen or 16;local d_c=a_c.minPwLen or 4
-ada["REGISTER"]=function(_ac,aac)local bac=tostring(
-aac.name or"")
-local cac=tostring(aac.passwordHash or"")local dac=aac.class;if#bac<b_c or#bac>c_c then
-bca.send(_ac,"REGISTER_FAILED",{message="Name must be "..b_c.."-"..c_c..
-" characters."})return end;if
-bac:match("[^%w_%-]")then
-bca.send(_ac,"REGISTER_FAILED",{message="Name may only contain letters, numbers, - and _"})return end;if
-#cac==0 then
-bca.send(_ac,"REGISTER_FAILED",{message="Password must be at least "..d_c.." characters."})return end;if
-cca.db:findOne({name=bac})then
-bca.send(_ac,"REGISTER_FAILED",{message="Name already taken."})return end
-local _bc={cid=_ac,name=bac,passwordHash=cac,class=dac}
-if a_c.buildProfile then local abc=a_c.buildProfile(_ac,aac)or{}for bbc,cbc in
-pairs(abc)do _bc[bbc]=cbc end end;cca.db:insert(_bc)cca.sessions[_ac]=_bc
-dba.info("Auth: '"..bac..
-"' registered (client ".._ac..")")
-dbb("Auth: '"..bac.."' registered","success")
-bca.send(_ac,"REGISTER_SUCCESS",{profile=_db(_bc)})
-if a_c.onRegister then pcall(a_c.onRegister,_ac,_bc)end end
-ada["LOGIN_CHALLENGE_REQUEST"]=function(_ac,aac)local bac=os.epoch("utc")/1000
-local cac=cca.attempts[_ac]
-if cac and bac<cac.resetAt then
-bca.send(_ac,"LOGIN_FAILED",{message=string.format("Too many failed attempts. Try again in %ds.",math.ceil(
-cac.resetAt-bac))})return end;local dac=tostring(aac.name or"")
-math.randomseed(os.epoch("utc")+_ac)
-local _bc=tostring(math.random(10000000,99999999))..tostring(os.epoch("utc")%
-1000000)cca.nonces[_ac]={nonce=_bc,name=dac,expireAt=bac+30}
-bca.send(_ac,"LOGIN_CHALLENGE",{nonce=_bc})end
-ada["LOGIN"]=function(_ac,aac)local bac=os.epoch("utc")/1000
-local cac=cca.nonces[_ac]local dac=tostring(aac.name or"")
-local _bc=tostring(aac.response or"")
-if not cac or cac.name~=dac or bac>cac.expireAt then cca.nonces[_ac]=
+local b_c=a_c.minNameLen or 3;local c_c=a_c.maxNameLen or 16
+ada["REGISTER"]=function(d_c,_ac)
+local aac=tostring(_ac.name or"")local bac=tostring(_ac.passwordHash or"")
+local cac=_ac.class;if#aac<b_c or#aac>c_c then
+bca.send(d_c,"REGISTER_FAILED",{message="Name must be "..b_c..
+"-"..c_c.." characters."})return end;if
+aac:match("[^%w_%-]")then
+bca.send(d_c,"REGISTER_FAILED",{message="Name may only contain letters, numbers, - and _"})return end;if
+#bac==0 then
+bca.send(d_c,"REGISTER_FAILED",{message="No password supplied."})return end;if
+cca.db:findOne({name=aac})then
+bca.send(d_c,"REGISTER_FAILED",{message="Name already taken."})return end
+local dac={cid=d_c,name=aac,passwordHash=bac,class=cac}
+if a_c.buildProfile then local _bc=a_c.buildProfile(d_c,_ac)or{}for abc,bbc in
+pairs(_bc)do dac[abc]=bbc end end;cca.db:insert(dac)cca.sessions[d_c]=dac
+dba.info("Auth: '"..aac..
+"' registered (client "..d_c..")")
+dbb("Auth: '"..aac.."' registered","success")
+bca.send(d_c,"REGISTER_SUCCESS",{profile=_db(dac)})
+if a_c.onRegister then pcall(a_c.onRegister,d_c,dac)end end
+ada["LOGIN_CHALLENGE_REQUEST"]=function(d_c,_ac)local aac=os.epoch("utc")/1000
+local bac=cca.attempts[d_c]
+if bac and aac<bac.resetAt then
+bca.send(d_c,"LOGIN_FAILED",{message=string.format("Too many failed attempts. Try again in %ds.",math.ceil(
+bac.resetAt-aac))})return end;local cac=tostring(_ac.name or"")
+math.randomseed(os.epoch("utc")+d_c)
+local dac=tostring(math.random(10000000,99999999))..tostring(os.epoch("utc")%
+1000000)cca.nonces[d_c]={nonce=dac,name=cac,expireAt=aac+30}
+bca.send(d_c,"LOGIN_CHALLENGE",{nonce=dac})end
+ada["LOGIN"]=function(d_c,_ac)local aac=os.epoch("utc")/1000
+local bac=cca.nonces[d_c]local cac=tostring(_ac.name or"")
+local dac=tostring(_ac.response or"")
+if not bac or bac.name~=cac or aac>bac.expireAt then cca.nonces[d_c]=
 nil
-bca.send(_ac,"LOGIN_FAILED",{message="Challenge expired. Please try again."})return end;cca.nonces[_ac]=nil
-local abc=cca.db:findOne({name=dac})
+bca.send(d_c,"LOGIN_FAILED",{message="Challenge expired. Please try again."})return end;cca.nonces[d_c]=nil
+local _bc=cca.db:findOne({name=cac})
 if
-not abc or dcb(abc.passwordHash..cac.nonce)~=_bc then local bbc=cca.attempts[_ac]or{count=0,resetAt=0}bbc.count=
-bbc.count+1;if bbc.count>=5 then bbc.resetAt=bac+60;bbc.count=0
-dbb("Auth: Client #".._ac..
+not _bc or dcb(_bc.passwordHash..bac.nonce)~=dac then local abc=cca.attempts[d_c]or{count=0,resetAt=0}abc.count=
+abc.count+1;if abc.count>=5 then abc.resetAt=aac+60;abc.count=0
+dbb("Auth: Client #"..d_c..
 " rate-limited","warn")end
-cca.attempts[_ac]=bbc
-bca.send(_ac,"LOGIN_FAILED",{message="Wrong username or password."})
-dbb("Auth: Failed login for '"..dac.."'","warn")return end;cca.attempts[_ac]=nil;if abc.cid~=_ac then
-cca.db:update({name=dac},{cid=_ac})abc.cid=_ac end
-cca.sessions[_ac]=abc
-dba.info("Auth: '"..dac.."' logged in (client ".._ac..")")
-dbb("Auth: '"..dac.."' logged in","success")
-bca.send(_ac,"LOGIN_SUCCESS",{profile=_db(abc)})if a_c.onLogin then pcall(a_c.onLogin,_ac,abc)end end
-ada["LOGOUT"]=function(_ac)local aac=cca.sessions[_ac]cca.sessions[_ac]=nil;if aac then
+cca.attempts[d_c]=abc
+bca.send(d_c,"LOGIN_FAILED",{message="Wrong username or password."})
+dbb("Auth: Failed login for '"..cac.."'","warn")return end;cca.attempts[d_c]=nil;if _bc.cid~=d_c then
+cca.db:update({name=cac},{cid=d_c})_bc.cid=d_c end
+cca.sessions[d_c]=_bc
+dba.info("Auth: '"..cac.."' logged in (client "..d_c..")")
+dbb("Auth: '"..cac.."' logged in","success")
+bca.send(d_c,"LOGIN_SUCCESS",{profile=_db(_bc)})if a_c.onLogin then pcall(a_c.onLogin,d_c,_bc)end end
+ada["LOGOUT"]=function(d_c)local _ac=cca.sessions[d_c]cca.sessions[d_c]=nil;if _ac then
 dba.info(
-"Auth: '"..aac.name.."' logged out (client ".._ac..")")
-dbb("Auth: '"..aac.name.."' logged out","info")end;if a_c.onLogout then
-pcall(a_c.onLogout,_ac,aac)end end end
+"Auth: '".._ac.name.."' logged out (client "..d_c..")")
+dbb("Auth: '".._ac.name.."' logged out","info")end;if a_c.onLogout then
+pcall(a_c.onLogout,d_c,_ac)end end end
 bca.auth={isLoggedIn=function(__c)return cca.sessions[__c]~=nil end,getProfile=function(__c)return
 cca.sessions[__c]end,logout=function(__c)cca.sessions[__c]=nil end,require=function(__c)if
 not cca.sessions[__c]then

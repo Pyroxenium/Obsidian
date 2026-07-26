@@ -142,7 +142,8 @@ function Engine.setScene(scene)
     if state.activeScene and state.activeScene.event then
         state.activeScene.event:emit("load")
     end
-    Engine.logger.info("Scene changed: " .. (state.activeScene.name or "Unnamed"))
+    Engine.logger.info("Scene changed: "
+        .. (state.activeScene and (state.activeScene.name or "Unnamed") or "none"))
 end
 function Engine.getScene()
     return state.activeScene
@@ -4174,6 +4175,8 @@ local logger = {
     history = {},
     maxHistory = 8,
     logFile = "obsidian.log",
+    level = "info",
+    fileEnabled = true,
     _fileInitialized = false,
     _consoleHook = nil,
 }
@@ -4183,7 +4186,25 @@ local colors = {
     ERROR = "e",
     DEBUG = "7"
 }
+local severity = {
+    debug = 1, DEBUG = 1,
+    info  = 2, INFO  = 2,
+    warn  = 3, WARN  = 3,
+    error = 4, ERROR = 4,
+    off   = 5,
+}
+function logger.setLevel(level)
+    if severity[level] == nil then
+        error("Obsidian logger: unknown level " .. tostring(level), 2)
+    end
+    logger.level = level
+end
+function logger.setFileEnabled(enabled)
+    logger.fileEnabled = enabled ~= false
+end
 function logger._add(level, msg)
+    local threshold = severity[logger.level] or severity.info
+    if (severity[level] or severity.info) < threshold then return end
     local timestamp = os.date("%H:%M:%S")
     local logLine = string.format("[%s] [%s] %s", timestamp, level, tostring(msg))
     local entry = {
@@ -4195,12 +4216,14 @@ function logger._add(level, msg)
     if #logger.history > logger.maxHistory then
         table.remove(logger.history, 1)
     end
-    local mode = logger._fileInitialized and "a" or "w"
-    local f = fs.open(logger.logFile, mode)
-    if f then
-        logger._fileInitialized = true
-        f.writeLine(logLine)
-        f.close()
+    if logger.fileEnabled then
+        local mode = logger._fileInitialized and "a" or "w"
+        local f = fs.open(logger.logFile, mode)
+        if f then
+            logger._fileInitialized = true
+            f.writeLine(logLine)
+            f.close()
+        end
     end
     if logger._consoleHook then
         logger._consoleHook(logLine, colors[level] or "0")
@@ -6499,7 +6522,6 @@ function server.enableAuth(db, opts)
     _auth.enabled = true
     local minNameLen = opts.minNameLen or 3
     local maxNameLen = opts.maxNameLen or 16
-    local minPwLen = opts.minPwLen or 4
     _handlers["REGISTER"] = function(clientId, data)
         local name = tostring(data.name or "")
         local passwordHash = tostring(data.passwordHash or "")
@@ -6516,7 +6538,7 @@ function server.enableAuth(db, opts)
         end
         if #passwordHash == 0 then
             server.send(clientId, "REGISTER_FAILED",
-                { message = "Password must be at least " .. minPwLen .. " characters." })
+                { message = "No password supplied." })
             return
         end
         if _auth.db:findOne({ name = name }) then
