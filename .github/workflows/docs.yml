@@ -1,17 +1,8 @@
 name: Obsidian Docs & Deploy
 
+# Manual only. Publishing to Pages is never triggered by a push; run this
+# workflow from the Actions tab when the site should be updated.
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'src/**'
-      - 'guides/**'
-      - 'tools/docgen.lua'
-      - '.github/vitepress.config.mts'
-      - '.github/docs-index.md'
-      - '.github/docs-home.md'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:

@@ -19,19 +19,31 @@
 
 local args = { ... }
 
---- Obsidian's own directory. CraftOS' require calls a module chunk with
---- (name, path); running this file as a program is supported as a fallback.
+--- Obsidian's own directory.
+---
+--- Asking the chunk where it was loaded from is the only method that does not
+--- depend on how the caller invoked it: a module is compiled with the chunk
+--- name "@/path/to/init.lua". The (name, path) pair that CraftOS' require
+--- passes is kept as a fallback for hosts without debug.getinfo.
+---
+--- Deliberately no fallback to shell.getRunningProgram(): that yields the
+--- directory of the *calling* program, which would silently resolve modules
+--- against the wrong tree instead of failing.
 local function locate()
+    local getinfo = _G.debug and _G.debug.getinfo
+    if getinfo then
+        local info = getinfo(1, "S")
+        local source = info and info.source
+        if type(source) == "string" and source:sub(1, 1) == "@" then
+            return fs.getDir(source:sub(2))
+        end
+    end
+
     local path = args[2]
     if type(path) == "string" and path ~= "" then
         return fs.getDir(path)
     end
-    if shell and shell.getRunningProgram then
-        local running = shell.getRunningProgram()
-        if type(running) == "string" and running ~= "" then
-            return fs.getDir(running)
-        end
-    end
+
     error("Obsidian: cannot determine its own location. "
         .. 'Load it with require("obsidian").', 0)
 end

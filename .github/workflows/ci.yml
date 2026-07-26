@@ -45,8 +45,12 @@ jobs:
       # luac only proves a file parses; this proves the engine comes up.
       - name: Smoke-test the source install
         run: |
-          mkdir -p "$RUNNER_TEMP/craftos-smoke"
-          cp tools/smoketest.lua "$RUNNER_TEMP/craftos-smoke/smoketest.lua"
+          # --directory is CraftOS-PC's *data* directory; the computer's own
+          # root lives in computer/0 below it. Files copied anywhere else are
+          # invisible to the shell.
+          root="$RUNNER_TEMP/craftos-smoke/computer/0"
+          mkdir -p "$root"
+          cp tools/smoketest.lua "$root/smoketest.lua"
           craftos \
             --headless \
             --directory "$RUNNER_TEMP/craftos-smoke" \
@@ -87,14 +91,15 @@ jobs:
       - name: Smoke-test release bundles
         run: |
           for variant in obsidian obsidian.min obsidian.compressed; do
-            workdir="$RUNNER_TEMP/craftos-bundle-$variant"
-            mkdir -p "$workdir"
-            cp tools/smoketest.lua "$workdir/smoketest.lua"
-            cp "$RUNNER_TEMP/obsidian-bundle/$variant.lua" "$workdir/obsidian.lua"
+            datadir="$RUNNER_TEMP/craftos-bundle-$variant"
+            root="$datadir/computer/0"
+            mkdir -p "$root"
+            cp tools/smoketest.lua "$root/smoketest.lua"
+            cp "$RUNNER_TEMP/obsidian-bundle/$variant.lua" "$root/obsidian.lua"
             echo "--- $variant.lua ---"
             craftos \
               --headless \
-              --directory "$workdir" \
+              --directory "$datadir" \
               --exec "local ok = shell.run('smoketest.lua'); os.shutdown(ok and 0 or 1)"
           done
 
