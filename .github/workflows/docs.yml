@@ -46,6 +46,8 @@ jobs:
           mv "$RUNNER_TEMP/obsidian-api/README.md" \
             "$RUNNER_TEMP/obsidian-api/index.md"
 
+      # The whole gh-pages branch is generated from master, scaffolding
+      # included, so it can start out empty and never needs seeding by hand.
       - name: Update documentation source
         run: |
           mkdir -p site/docs/.vitepress
@@ -58,6 +60,10 @@ jobs:
           cp source/.github/vitepress.config.mts site/docs/.vitepress/config.mts
           cp source/.github/docs-index.md site/docs/index.md
           cp source/.github/docs-home.md site/docs/home.md
+          cp source/.github/site/package.json site/package.json
+          cp source/.github/site/package-lock.json site/package-lock.json
+          cp source/.github/site/.gitignore site/.gitignore
+          touch site/.nojekyll
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -82,7 +88,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs
+          git add docs package.json package-lock.json .gitignore .nojekyll
           if git diff --cached --quiet; then
             echo "documentation is already current"
           else
