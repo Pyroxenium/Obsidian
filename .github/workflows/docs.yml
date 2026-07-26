@@ -50,7 +50,7 @@ jobs:
       # included, so it can start out empty and never needs seeding by hand.
       - name: Update documentation source
         run: |
-          mkdir -p site/docs/.vitepress
+          mkdir -p site/docs/.vitepress/theme
           mkdir -p site/docs/api
           mkdir -p site/docs/guides
           rsync --archive --delete \
@@ -58,6 +58,8 @@ jobs:
           rsync --archive --delete \
             source/guides/ site/docs/guides/
           cp source/.github/vitepress.config.mts site/docs/.vitepress/config.mts
+          cp source/.github/theme/index.ts site/docs/.vitepress/theme/index.ts
+          cp source/.github/theme/custom.css site/docs/.vitepress/theme/custom.css
           cp source/.github/docs-index.md site/docs/index.md
           cp source/.github/docs-home.md site/docs/home.md
           cp source/.github/site/package.json site/package.json
