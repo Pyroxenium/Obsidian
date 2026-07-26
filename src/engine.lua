@@ -1,6 +1,9 @@
 -- Obsidian Engine core
 --- Main entry point that initializes subsystems, manages the main loop, and provides global configuration and utilities.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 --- The Engine module serves as the central hub for the Obsidian game engine, responsible for initializing all core subsystems, managing the main update and render loop, handling scene transitions, and providing global configuration options. It also includes error handling and a debug overlay for performance metrics.
@@ -10,6 +13,8 @@
 ---@field scene SceneModule Scene management system with entity storage, rendering, and update loops
 ---@field thread ThreadModule Lightweight cooperative threading system for concurrent tasks
 ---@field buffer BufferInstance Centralized drawing buffer for rendering to the terminal with support for letterboxing and design resolution
+---@field renderer BufferInstance Alias for buffer; exposes layers, subpixels and palette control
+---@field rgb fun(r:number|string, g:number|nil, b:number|nil):number Registers a reusable logical RGB color
 ---@field input InputModule Handles keyboard and mouse input, including state tracking and event processing
 ---@field loader LoaderModule Resource loading system for sprites, audio, and other assets with caching
 ---@field inputMapper InputMapperModule Configurable input mapping system to abstract raw input into game actions
@@ -32,7 +37,11 @@
 ---@field db DatabaseModule Database management system for structured data storage
 ---@field particles ParticlesModule Particle system for visual effects like explosions, smoke, and magic
 ---@field console ConsoleModule In-game console for debugging, command execution, and log viewing
+---@field VERSION string Semantic version of this Obsidian build
 local Engine = {}
+
+-- Read by tools/bundle.lua to label release bundles. Keep it semver.
+Engine.VERSION = "1.0.0"
 
 local config = {
     fps = 20,
@@ -65,8 +74,12 @@ Engine.scene = require("core.scene")
 Engine.thread = require("core.thread")
 local bufferModule = require("core.buffer")
 Engine.buffer = bufferModule.new()
+Engine.renderer = Engine.buffer
+Engine.rgb = bufferModule.rgb
+Engine.color = bufferModule.color
 Engine.input = require("core.input")
 Engine.loader = require("core.loader")
+Engine.flimg = Engine.loader.flimg
 Engine.inputMapper = require("core.input_mapper")
 Engine.ui = require("core.ui")
 Engine.tween = require("core.tween")
@@ -98,6 +111,27 @@ local errorModule = Engine.error
 -- Wire buffer into scene before any Scene.new() calls
 Engine.scene.setBuffer(Engine.buffer)
 
+--- Create an optional retained render layer. Existing drawing continues to use
+--- Engine.buffer's opaque default layer.
+---@param name string Unique layer name
+---@param zIndex number|nil Lower values render first
+---@return table layer
+function Engine.addRenderLayer(name, zIndex)
+    return Engine.buffer:addLayer(name, zIndex)
+end
+
+---@param name string Layer name
+---@return table|nil layer
+function Engine.getRenderLayer(name)
+    return Engine.buffer:getLayer(name)
+end
+
+---@param layerOrName table|string
+---@return boolean removed
+function Engine.removeRenderLayer(layerOrName)
+    return Engine.buffer:removeLayer(layerOrName)
+end
+
 -- Wire logger → console hook so all log calls reach the console
 Engine.logger._consoleHook = function(text, fg)
     Engine.console.addLine(text, fg)
@@ -115,6 +149,7 @@ Engine.server._emit = engineEmit
 
 -- Wire thread error handler
 Engine.thread.errorHandler = function(err)
+    Engine.buffer:restorePalette()
     errorModule.report(err)
     state.running = false
 end
@@ -137,6 +172,7 @@ end
 ---@param msg string Error message
 ---@param trace string|nil Optional stack trace
 function Engine._reportError(msg, trace)
+    Engine.buffer:restorePalette()
     errorModule.report(msg, trace)
     state.running = false
 end
@@ -651,11 +687,14 @@ function Engine.start()
         local event = { os.pullEvent() }
         handleEvent(event)
     end
+
+    Engine.buffer:restorePalette()
 end
 
 --- Stop the engine loop
 function Engine.stop()
     state.running = false
+    Engine.buffer:restorePalette()
 end
 
 --- Check if engine is running

@@ -2,6 +2,9 @@
 -- High-level server abstraction built on top of network.lua
 -- Greatly simplifies building dedicated servers with Obsidian.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local logger  = require("core.logger")
@@ -53,6 +56,10 @@ local server = {}
 server._emit = function() end
 
 -- ─── Internal State ───────────────────────────────────────────────────────────
+
+-- Forward declaration: the auth state is defined further down, but
+-- _removeClient() has to clear sessions long before that point.
+local _auth
 
 local _clients = {}   -- [id] = { id, meta, joinedAt, lastSeen, ping, heartbeatSent, lastSeq }
 local _rooms = {}   -- [roomName] = { [clientId] = true }
@@ -297,6 +304,11 @@ local function _removeClient(clientId)
     if not _clients[clientId] then return end
     _clients[clientId] = nil
 
+    -- Sessions are keyed by computer ID. Without this the next client to
+    -- connect under the same ID inherits the login of the one that left.
+    _auth.sessions[clientId] = nil
+    _auth.nonces[clientId] = nil
+
     for roomName, members in pairs(_rooms) do
         members[clientId] = nil
         local count = 0
@@ -417,7 +429,6 @@ end
 ---@param msgType string Message type identifier
 ---@param fn fun(clientId: number, data: table, packet: NetworkPacket) Handler function that processes incoming messages of the specified type. Receives the client ID, message data, and the full packet as arguments.
 function server.on(msgType, fn)
-    server.log(string.format("Registered handler: %s", msgType), "debug")
     _handlers[msgType] = fn
 end
 
@@ -435,7 +446,6 @@ end
 
 local function _dispatch(clientId, packet)
     local i = 0
-    server.log(string.format("Dispatch: '%s' from #%d", tostring(packet.type), clientId), "debug")
     local function next()
         i = i + 1
         if i <= #_middleware then
@@ -510,7 +520,7 @@ end
 ---@field nonces table One-time login nonces for challenge-response authentication, indexed by client ID (clientId → { nonce, name, expireAt })
 ---@field attempts table Failed login attempt tracking for rate limiting, indexed by client ID (clientId
 ---@field opts AuthOptions Configuration options for the auth system
-local _auth = {
+_auth = {
     enabled = false,
     db = nil,
     sessions = {}, -- [clientId] = profile
@@ -778,8 +788,8 @@ function server.stop()
     for _, id in ipairs(toRemove) do _clients[id] = nil end
     _rooms = {}
     network.close()
-    _conPush("Server stopped.", "system")
-    _conRender()
+    _consolePush("Server stopped.", "system")
+    _consoleRender()
     server._emit("server.stopped")
     logger.info("Server: Stopped")
 end
@@ -789,9 +799,8 @@ end
 local function _handleRednet(senderId, pkt, proto)
     if proto ~= _protocol then return end
 
-    if pkt.type ~= "PONG" then
-        server.print(string.format("Received rednet_message from %d: type=%s", senderId, tostring(pkt.type)), "debug")
-    end
+    if type(pkt) ~= "table" or not pkt.type then return end
+
     if type(pkt) == "table" and pkt.type == "DISCOVER" and pkt.hostname == _hostname then
         logger.info("Server: DISCOVER from " .. tostring(senderId) .. " — replying")
         rednet.send(senderId, { type = "DISCOVER_REPLY", hostname = _hostname,
@@ -803,8 +812,6 @@ local function _handleRednet(senderId, pkt, proto)
     if _clients[senderId] then
         _clients[senderId].lastSeen = os.epoch("utc") / 1000
     end
-
-    if type(pkt) ~= "table" or not pkt.type then return end
 
     -- Built-in: connection handshake
     if pkt.type == "CONNECT_REQUEST" then
@@ -835,6 +842,15 @@ local function _handleRednet(senderId, pkt, proto)
     end
 
     if not _clients[senderId] then return end
+
+    -- The low-level Obsidian client actively pings its server. Dedicated
+    -- servers use this high-level event loop instead of network.processEvent(),
+    -- so they must answer that PING here themselves.
+    if pkt.type == "PING" then
+        local pingTime = pkt.t or (type(pkt.data) == "table" and pkt.data.t)
+        rednet.send(senderId, makePacket("PONG", { t=pingTime }), _protocol)
+        return
+    end
 
     if pkt.type == "PONG" then
         local c = _clients[senderId]

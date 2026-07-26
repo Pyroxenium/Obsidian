@@ -1,6 +1,9 @@
 --- Obsidian Tweening Module
 --- Provides functions to animate properties of tables over time with various easing functions. Useful for smooth transitions, animations, and timed effects. Tweens can be created, paused, resumed, cancelled, and completed via their handles.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local logger = require("core.logger")

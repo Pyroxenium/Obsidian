@@ -1,6 +1,9 @@
 -- Obsidian Audio Module
 -- Handles music playback, sound effects, and speaker management
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local logger = require("core.logger")
 local thread = require("core.thread")
 

@@ -1,4 +1,7 @@
 ---@diagnostic disable: undefined-global
+
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
 local logger = require("core.logger")
 
 --- EventEmitter — instanced event bus.

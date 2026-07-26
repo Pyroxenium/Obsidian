@@ -1,6 +1,9 @@
 -- Obsidian Engine: Pathfinding Module
 -- Efficient A* implementation with Min-Heap and LOS smoothing.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local mathUtils = require("core.math")

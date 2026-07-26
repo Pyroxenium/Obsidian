@@ -1,0 +1,121 @@
+name: Obsidian CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Checks and documentation
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          sudo add-apt-repository --yes ppa:jackmacwindows/ppa
+          sudo apt-get update
+          sudo apt-get install --yes craftos-pc lua5.4
+
+      # ui/events.lua uses goto, so this needs a 5.2+ compiler. luac5.1 would
+      # reject it. This only parses, it never runs engine code.
+      - name: Syntax-check all sources
+        run: |
+          status=0
+          for file in $(find src tools -name '*.lua' | sort); do
+            if ! luac5.4 -p "$file"; then
+              echo "::error file=$file::syntax error"
+              status=1
+            fi
+          done
+          exit $status
+
+      # Mirrors what the installer produces: src/ lands in the computer as
+      # "obsidian", user code sits next to it and calls require("obsidian").
+      # luac only proves a file parses; this proves the engine comes up.
+      - name: Smoke-test the source install
+        run: |
+          mkdir -p "$RUNNER_TEMP/craftos-smoke"
+          cp tools/smoketest.lua "$RUNNER_TEMP/craftos-smoke/smoketest.lua"
+          craftos \
+            --headless \
+            --directory "$RUNNER_TEMP/craftos-smoke" \
+            --mount-ro "obsidian=$GITHUB_WORKSPACE/src" \
+            --exec "local ok = shell.run('smoketest.lua'); os.shutdown(ok and 0 or 1)"
+
+      # Only validated here. The pages are generated and published by
+      # docs.yml into the gh-pages branch, so master carries no docs/.
+      - name: Validate documentation annotations
+        run: lua5.4 tools/docgen.lua --check
+
+      - name: Build release bundles
+        run: |
+          mkdir -p "$RUNNER_TEMP/obsidian-bundle"
+          lua5.4 tools/bundle-host.lua \
+            --no-minify "$RUNNER_TEMP/obsidian-bundle/obsidian.lua"
+          lua5.4 tools/bundle-host.lua \
+            "$RUNNER_TEMP/obsidian-bundle/obsidian.min.lua"
+          lua5.4 tools/bundle-host.lua \
+            --compress "$RUNNER_TEMP/obsidian-bundle/obsidian.compressed.lua"
+
+      # The minifier rewrites every identifier, so a bundle that no longer
+      # parses is the failure mode that matters most here.
+      - name: Syntax-check release bundles
+        run: |
+          status=0
+          for file in "$RUNNER_TEMP"/obsidian-bundle/*.lua; do
+            if ! luac5.4 -p "$file"; then
+              echo "::error::generated bundle does not parse: $file"
+              status=1
+            fi
+          done
+          exit $status
+
+      # Each bundle is dropped in as obsidian.lua, i.e. exactly where the
+      # installed directory would sit, and has to satisfy the same test. That
+      # also proves a bundle is a drop-in replacement for the source install.
+      - name: Smoke-test release bundles
+        run: |
+          for variant in obsidian obsidian.min obsidian.compressed; do
+            workdir="$RUNNER_TEMP/craftos-bundle-$variant"
+            mkdir -p "$workdir"
+            cp tools/smoketest.lua "$workdir/smoketest.lua"
+            cp "$RUNNER_TEMP/obsidian-bundle/$variant.lua" "$workdir/obsidian.lua"
+            echo "--- $variant.lua ---"
+            craftos \
+              --headless \
+              --directory "$workdir" \
+              --exec "local ok = shell.run('smoketest.lua'); os.shutdown(ok and 0 or 1)"
+          done
+
+      - name: Update committed bundles
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p bundle
+          cp "$RUNNER_TEMP"/obsidian-bundle/*.lua bundle/
+          git add bundle
+          if git diff --cached --quiet; then
+            echo "bundles already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Build release bundles"
+          git push
+
+      - name: Upload release bundles
+        uses: actions/upload-artifact@v7
+        with:
+          name: obsidian-bundles
+          path: ${{ runner.temp }}/obsidian-bundle/*.lua
+          if-no-files-found: error

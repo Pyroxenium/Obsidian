@@ -2,6 +2,9 @@
 --- Provides a simple particle emitter system for visual effects. Emitters can be configured with various parameters and will spawn particles that move, update, and expire over time.
 --- Particles can optionally bounce off solid tiles, be affected by gravity, and have their color
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local mathUtils = require("core.math")

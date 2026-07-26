@@ -1,6 +1,9 @@
 --- Obsidian Engine Physics Module
 -- Provides basic 2D physics body definitions, impulse resolution, AABB collision detection, and an ECS system for physics integration.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 local M = require("core.math")
 

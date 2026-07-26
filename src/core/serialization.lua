@@ -4,6 +4,9 @@
 --- 
 ---@diagnostic disable: undefined-global
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local logger = require("core.logger")
 local loader = require("core.loader")
 local mathUtils = require("core.math")
@@ -111,13 +114,13 @@ function Serialization.apply(scene, data)
     scene.camera:set(data.camera.x, data.camera.y)
 
     if data.tilemap and data.tilemap.spritePath then
-        local sprite = loader.load(data.tilemap.spritePath)
+        local sprite = loader.loadSprite(data.tilemap.spritePath)
         scene:setTilemap(sprite, data.tilemap.data, data.tilemap.solidTiles, data.tilemap.tileProperties)
         scene.tilemap.spritePath = data.tilemap.spritePath
     end
 
     for _, s in ipairs(data.statics) do
-        local sprite = s.spritePath and loader.load(s.spritePath) or nil
+        local sprite = s.spritePath and loader.loadSprite(s.spritePath) or nil
         scene:addStatic(sprite, s.x, s.y, {
             z        = s.z,
             collider = s.collider,
@@ -136,7 +139,7 @@ function Serialization.apply(scene, data)
         local id = idMap[entData.id]
         for compName, compData in pairs(entData.components) do
             if compName == "sprite" then
-                local s = loader.load(compData.spritePath)
+                local s = loader.loadSprite(compData.spritePath)
                 scene:attach(id, "sprite", s)
             elseif type(compData) == "table" and compData.__type == "vec2" then
                 scene:attach(id, compName, mathUtils.vec2(compData.x, compData.y))

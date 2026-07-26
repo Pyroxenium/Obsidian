@@ -3,6 +3,9 @@
 -- Writes directly to disk under its own directory (default: "db/").
 ---@diagnostic disable: undefined-global
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local logger  = require("core.logger")
 
 ---@class DatabaseModule

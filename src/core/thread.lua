@@ -1,6 +1,9 @@
 --- Obsidian Thread Module
 --- Provides a simple cooperative threading system using Lua coroutines. Threads can yield with an optional event filter and will be resumed when that event occurs. Uncaught errors in threads are handled by an optional global error handler.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local logger = require("core.logger")
 
 ---@diagnostic disable: undefined-global

@@ -2,6 +2,9 @@
 -- Provides a simple way to bind action names to multiple keys and check their state.
 ---@diagnostic disable: undefined-global
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local input = require("core.input")
 
 ---@class InputMapperModule

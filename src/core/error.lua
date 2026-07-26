@@ -3,6 +3,9 @@
 -- Displays a panic screen with stack trace on unhandled errors.
 -- Override Error.handler via Engine.onError(fn) to implement custom error handling.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local logger = require("core.logger")
 
 ---@class ErrorModule

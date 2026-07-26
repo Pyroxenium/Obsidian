@@ -16,6 +16,9 @@
 --   map:setTile("collision",  3,  3, 2)
 --   map:attach(scene)
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local loader  = require("core.loader")
 local storage = require("core.storage")
 

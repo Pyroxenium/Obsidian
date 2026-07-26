@@ -1,6 +1,9 @@
 -- Obsidian Timer Module
 -- Scheduling system for delayed and repeating callbacks
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local logger = require("core.logger")

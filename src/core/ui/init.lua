@@ -14,6 +14,9 @@
 ---   -- In your event loop:
 ---   ctx:handleEvent({ os.pullEvent() })
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local element = require("core.ui.element")
 local render  = require("core.ui.render")
 local events  = require("core.ui.events")

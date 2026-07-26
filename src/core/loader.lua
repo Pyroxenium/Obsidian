@@ -1,11 +1,15 @@
 -- Obsidian Engine: Asset Loader
 -- Handles loading and caching of sprites, UI, and emitters.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local logger = require("core.logger")
+local flimg = require("flimg")
 
----@alias SpriteLayer table<number, string[]> Each layer is a table of rows, where each row is an array of single-character strings.
+---@alias SpriteLayer table<number, table|string> Each layer contains legacy string rows or per-cell value tables. Color layers may contain RGB handles/#RRGGBB values.
 ---@alias SpriteFrame table<number, SpriteLayer> [1]=Chars, [2]=Fore, [3]=Back
 
 --- Represents a multi-frame sprite with character, foreground, and background layers.
@@ -34,9 +38,12 @@ local logger = require("core.logger")
 local loader = {
     basePath = nil,
     spriteCache = {},
+    imageCache = {},
     uiCache = {},
     emitterCache = {}
 }
+
+loader.flimg = flimg
 
 local function resolvePath(path)
     if not path or path:sub(1,1) == "/" then return path end
@@ -139,9 +146,24 @@ function loader._validateSprite(path, data)
 
                 if type(row) == "table" then
                     for c = 1, data.width do
-                        if type(row[c]) ~= "string" or #row[c] ~= 1 then
-                            local content = tostring(row[c])
-                            return false, string.format("Frame %d, layer %d, row %d, column %d: '%s' is not a single character.", f, layer, r, c, content)
+                        local cell = row[c]
+                        local validCell
+                        if layer == 1 then
+                            validCell = type(cell) == "string" and #cell == 1
+                        else
+                            validCell = type(cell) == "number"
+                                or (type(cell) == "string" and (
+                                    #cell == 1
+                                    or cell:match("^#%x%x%x$")
+                                    or cell:match("^#%x%x%x%x%x%x$")
+                                    or cell:match("^#%x%x%x%x%x%x%x%x$")
+                                ))
+                        end
+                        if not validCell then
+                            local content = tostring(cell)
+                            return false, string.format(
+                                "Frame %d, layer %d, row %d, column %d: invalid %s value '%s'.",
+                                f, layer, r, c, layer == 1 and "character" or "color", content)
                         end
                     end
                 end
@@ -177,6 +199,30 @@ function loader.loadSprite(path)
     loader.spriteCache[fp] = data
     logger.info("Loader: Cached sprite: " .. fp)
     return data
+end
+
+--- Loads a binary FLIMG image. Pixel images retain their virtual 2x3 data;
+-- draw them with buffer:drawImage(image, x, y, frame).
+---@param path string
+---@return table|nil image
+---@return string? error
+function loader.loadImage(path)
+    local fullPath = resolvePath(path)
+    if loader.imageCache[fullPath] then return loader.imageCache[fullPath] end
+    if not fs.exists(fullPath) then return nil, "File not found: " .. fullPath end
+    local handle = fs.open(fullPath, "rb") or fs.open(fullPath, "r")
+    if not handle then return nil, "Could not open file: " .. fullPath end
+    local raw = handle.readAll()
+    handle.close()
+    local ok, image = pcall(flimg.decode, raw)
+    if not ok then
+        logger.error("Loader: " .. tostring(image))
+        return nil, tostring(image)
+    end
+    image.path = path
+    loader.imageCache[fullPath] = image
+    logger.info("Loader: Cached FLIMG image: " .. fullPath)
+    return image
 end
 
 --- Load UI data (.oui file) from disk or cache.
@@ -224,6 +270,7 @@ end
 function loader.unload(path)
     local fullPath = resolvePath(path)
     loader.spriteCache[fullPath] = nil
+    loader.imageCache[fullPath] = nil
     loader.uiCache[fullPath] = nil
     loader.emitterCache[fullPath] = nil
     logger.info("Loader: Unloaded asset: " .. tostring(fullPath))
@@ -232,6 +279,7 @@ end
 --- Clear all cached assets.
 function loader.clearCache()
     loader.spriteCache = {}
+    loader.imageCache = {}
     loader.uiCache = {}
     loader.emitterCache = {}
     logger.info("Loader: Asset cache cleared.")

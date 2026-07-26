@@ -2,6 +2,9 @@
 --- All drawing functions for the UI system.
 --- Every function takes a Buffer instance (buf) as first argument.
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 local render = {}
 
 -- ─── Private helpers ──────────────────────────────────────────────────────────
@@ -83,8 +86,9 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
                 tx = rx + el.w - #line
             end
             if #line > 0 then buf:drawText(tx, row, line, fg, el.back) end
-            rowsToRestore[row] = true
         end
+        -- drawRect touched the complete element, including empty wrapped rows.
+        for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
         return
     end
 
@@ -233,7 +237,7 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
                 buf:drawText(lx, ry, label, el.fore, trackBg)
             end
         end
-        rowsToRestore[ry] = true
+        for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
     end
 end
 

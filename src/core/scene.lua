@@ -1,6 +1,9 @@
 -- Obsidian Scene module
 -- Combines ECS World with spatial systems, rendering, and game logic
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local ecs = require("core.ecs")

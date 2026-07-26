@@ -1,0 +1,119 @@
+name: Obsidian Docs & Deploy
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/**'
+      - 'guides/**'
+      - 'tools/docgen.lua'
+      - '.github/vitepress.config.mts'
+      - '.github/docs-index.md'
+      - '.github/docs-home.md'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Generate and build documentation
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+        with:
+          path: source
+
+      # The gh-pages branch holds the VitePress project: package.json, the
+      # lockfile and docs/. Everything generated is written into it here.
+      - name: Checkout documentation branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Install Lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.4
+
+      # docgen runs under plain Lua, so no emulator is needed for the docs.
+      - name: Generate API documentation
+        working-directory: source
+        run: |
+          lua5.4 tools/docgen.lua "$RUNNER_TEMP/obsidian-api"
+          mv "$RUNNER_TEMP/obsidian-api/README.md" \
+            "$RUNNER_TEMP/obsidian-api/index.md"
+
+      - name: Update documentation source
+        run: |
+          mkdir -p site/docs/.vitepress
+          mkdir -p site/docs/api
+          mkdir -p site/docs/guides
+          rsync --archive --delete \
+            "$RUNNER_TEMP/obsidian-api/" site/docs/api/
+          rsync --archive --delete \
+            source/guides/ site/docs/guides/
+          cp source/.github/vitepress.config.mts site/docs/.vitepress/config.mts
+          cp source/.github/docs-index.md site/docs/index.md
+          cp source/.github/docs-home.md site/docs/home.md
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Install VitePress dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Build site
+        working-directory: site
+        run: |
+          npx vitepress build docs --outDir "$RUNNER_TEMP/pages"
+          touch "$RUNNER_TEMP/pages/.nojekyll"
+
+      - name: Commit documentation source
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "documentation is already current"
+          else
+            git commit -m "docs: update Obsidian API"
+            git push
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/pages
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

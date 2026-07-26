@@ -1,22 +1,81 @@
-local args = {...}
-local obsidianPath = fs.getDir(args[2])
+-- Obsidian entry point.
+--
+-- The installer places this directory into a CC:Tweaked environment under the
+-- name "obsidian", so user code loads the engine with:
+--   local Engine = require("obsidian")
+--
+-- This file is the module loader. It reads Obsidian's own sources from the
+-- directory it lives in and hands each module a private require, so the engine
+-- never touches package.path and never shares package.loaded with the program
+-- using it. Two copies of Obsidian on one computer stay independent.
+--
+-- Every module receives that loader as its first vararg:
+--   local require = ...
+--
+-- The release bundles built by tools/bundle.lua use the same contract, so a
+-- bundled engine and a source checkout load identically.
 
-local defaultPath = package.path
-local format = "path;/path/?.lua;/path/?/init.lua;"
+---@diagnostic disable: undefined-global
 
-local main = format:gsub("path", obsidianPath)
-package.path = main.."rom/?;"..defaultPath
+local args = { ... }
 
-local function errorHandler(err)
-    error("Obsidian Loading Error: " .. tostring(err))
+--- Obsidian's own directory. CraftOS' require calls a module chunk with
+--- (name, path); running this file as a program is supported as a fallback.
+local function locate()
+    local path = args[2]
+    if type(path) == "string" and path ~= "" then
+        return fs.getDir(path)
+    end
+    if shell and shell.getRunningProgram then
+        local running = shell.getRunningProgram()
+        if type(running) == "string" and running ~= "" then
+            return fs.getDir(running)
+        end
+    end
+    error("Obsidian: cannot determine its own location. "
+        .. 'Load it with require("obsidian").', 0)
 end
 
-local ok, result = pcall(require, "engine")
-package.loaded.log = nil
+local root = locate()
+local loaded = {}
+local loading = {}
 
-package.path = defaultPath
+--- Resolves a dotted module name against Obsidian's source tree.
+--- "core.buffer" -> core/buffer.lua, "core.ui" -> core/ui/init.lua
+local function loader(name)
+    local cached = loaded[name]
+    if cached ~= nil then return cached end
+    if loading[name] then
+        error("Obsidian: circular require of " .. tostring(name), 0)
+    end
+
+    local relative = name:gsub("%.", "/")
+    local candidates = {
+        fs.combine(root, relative .. ".lua"),
+        fs.combine(root, relative .. "/init.lua"),
+    }
+
+    for _, path in ipairs(candidates) do
+        if fs.exists(path) and not fs.isDir(path) then
+            local chunk, err = loadfile(path)
+            if not chunk then
+                error("Obsidian: cannot load " .. name .. ": " .. tostring(err), 0)
+            end
+            -- Marked before running the chunk so that a cyclic require fails
+            -- with a clear message instead of recursing until stack overflow.
+            loading[name] = true
+            local result = chunk(loader, name)
+            loading[name] = nil
+            loaded[name] = result == nil and true or result
+            return loaded[name]
+        end
+    end
+
+    error("Obsidian: module not found: " .. tostring(name), 0)
+end
+
+local ok, result = pcall(loader, "engine")
 if not ok then
-    errorHandler(result)
-else
-    return result
+    error("Obsidian Loading Error: " .. tostring(result), 0)
 end
+return result

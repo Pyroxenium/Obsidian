@@ -1,5 +1,8 @@
 -- Obsidian Engine: Low-level Network (Rednet Wrapper)
 
+-- Injected by the bundler / init.lua loader; see src/init.lua.
+local require = ...
+
 ---@diagnostic disable: undefined-global
 
 local logger = require("core.logger")
@@ -348,8 +351,18 @@ function network.connect(protocol, hostname, callback, timeout)
                     _cleanup(true, id)
                     break
                 elseif not network._connecting then
-                    logger.info("Network: [thread] _connecting cleared externally, exiting wait")
                     os.cancelTimer(t)
+                    -- processEvent handles CONNECT_ACCEPT before the cooperative
+                    -- connection thread sees the same rednet event. It therefore
+                    -- clears _connecting and records serverId first. Treat that
+                    -- state as a successful handshake so the caller's callback
+                    -- still runs instead of remaining stuck on "connecting".
+                    if network.serverId == id then
+                        logger.info("Network: [thread] connection established by processEvent")
+                        _cleanup(true, id)
+                    else
+                        logger.info("Network: [thread] _connecting cleared externally, exiting wait")
+                    end
                     break
                 end
             end
@@ -420,6 +433,14 @@ function network.processEvent(eventData)
     if eventData[1] ~= "rednet_message" then return end
 
     local senderID, message, protocol = eventData[2], eventData[3], eventData[4]
+
+    -- Any packet on the active protocol from the connected server proves that
+    -- the connection is alive. The high-level server suppresses PING while it
+    -- receives regular client traffic, so requiring a dedicated PING/PONG here
+    -- would disconnect active clients after the timeout interval.
+    if senderID == network.serverId and protocol == network._protocol then
+        network._lastPingTime[senderID] = os.epoch("utc")
+    end
 
     if type(message) ~= "table" then
         network._emit("network.message", senderID, message, protocol)
@@ -500,7 +521,6 @@ function network.processEvent(eventData)
         return
     end
 
-    logger.info("Network: message from " .. tostring(senderID) .. " proto='" .. tostring(protocol) .. "' type=" .. tostring(msgType))
     network._emit("network.message", senderID, message, protocol)
 
     for _, h in ipairs(_anyMessageHandlers) do
