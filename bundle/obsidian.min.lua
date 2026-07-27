@@ -125,8 +125,8 @@ bc.buffer:present()bd.drawTime=os.epoch("utc")-daa
 dc.frameCount=dc.frameCount+1;local _ba=os.clock()
 if _ba-dc.fpsTimer>=1 then dc.currentFPS=dc.frameCount
 bd.fps=dc.frameCount;dc.frameCount=0;dc.fpsTimer=_ba end;local aba=(os.epoch("utc")-aaa)/1000
-local bba=math.max(0,cc.frameTime-aba)local cba=os.startTimer(bba)repeat local dba,_ca=os.pullEvent("timer")until
-tid==cba end
+local bba=math.max(0,cc.frameTime-aba)local cba=os.startTimer(bba)while true do local dba,_ca=os.pullEvent("timer")if _ca==
+cba then break end end end
 local function _aa(aaa)local baa=false;if dc.activeScene and dc.activeScene.ui then
 local daa,_ba=bc.getViewportOffset()
 baa=dc.activeScene.ui:handleEvent(aaa,daa,_ba)end

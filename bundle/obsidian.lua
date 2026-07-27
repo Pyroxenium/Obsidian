@@ -1,14 +1,20 @@
 local sources, paths = {}, {}
 sources["engine"] = [=[
 
+
 local require = ...
+
+
 local Engine = {}
+
 Engine.VERSION = "1.0.0"
+
 local config = {
     fps = 20,
     frameTime = 1 / 20,
     deltaHistorySize = 10,
 }
+
 local state = {
     running = false,
     activeScene = nil,
@@ -22,11 +28,13 @@ local state = {
     fpsTimer = 0,
     transition = nil,
 }
+
 local callbacks = {
     update = {},
     render = {},
     event = {},
 }
+
 Engine.ecs = require("core.ecs")
 Engine.scene = require("core.scene")
 Engine.thread = require("core.thread")
@@ -61,19 +69,26 @@ Engine.console = require("core.console")
 Engine.error = require("core.error")
 local debug = require("core.debug")
 local errorModule = Engine.error
+
+
 Engine.scene.setBuffer(Engine.buffer)
+
 function Engine.addRenderLayer(name, zIndex)
     return Engine.buffer:addLayer(name, zIndex)
 end
+
 function Engine.getRenderLayer(name)
     return Engine.buffer:getLayer(name)
 end
+
 function Engine.removeRenderLayer(layerOrName)
     return Engine.buffer:removeLayer(layerOrName)
 end
+
 Engine.logger._consoleHook = function(text, fg)
     Engine.console.addLine(text, fg)
 end
+
 local function engineEmit(name, ...)
     Engine.event:emit(name, ...)
     if state.activeScene and state.activeScene.event then
@@ -82,47 +97,63 @@ local function engineEmit(name, ...)
 end
 Engine.network._emit = engineEmit
 Engine.server._emit = engineEmit
+
 Engine.thread.errorHandler = function(err)
     Engine.buffer:restorePalette()
     errorModule.report(err)
     state.running = false
 end
+
 local _luaDebug = _G and _G.debug
+
 local function tracebackHandler(e)
     return (_luaDebug and _luaDebug.traceback)
         and _luaDebug.traceback(tostring(e), 2)
         or tostring(e)
 end
+
 function Engine.onError(fn)
     errorModule.handler = fn
 end
+
 function Engine._reportError(msg, trace)
     Engine.buffer:restorePalette()
     errorModule.report(msg, trace)
     state.running = false
 end
+
+
 function Engine.setFPS(fps)
     config.fps = fps
     config.frameTime = 1 / fps
 end
+
 function Engine.getTargetFPS()
     return config.fps
 end
+
 function Engine.getFPS()
     return state.currentFPS
 end
+
 function Engine.getDeltaTime()
     return state.lastDeltaTime
 end
+
+
 function Engine.onUpdate(fn)
     table.insert(callbacks.update, fn)
 end
+
 function Engine.onRender(fn)
     table.insert(callbacks.render, fn)
 end
+
 function Engine.onEvent(fn)
     table.insert(callbacks.event, fn)
 end
+
+
 function Engine.setScene(scene)
     if state.activeScene then
         if state.activeScene.event then
@@ -132,22 +163,28 @@ function Engine.setScene(scene)
             state.activeScene:onUnload()
         end
     end
+
     Engine.tween.stopAll()
     errorModule._shouldStop = false
     state.activeScene = scene
     Engine.scene.activeScene = scene
+
     if state.activeScene and state.activeScene.onLoad then
         state.activeScene:onLoad()
     end
+
     if state.activeScene and state.activeScene.event then
         state.activeScene.event:emit("load")
     end
+
     Engine.logger.info("Scene changed: "
         .. (state.activeScene and (state.activeScene.name or "Unnamed") or "none"))
 end
+
 function Engine.getScene()
     return state.activeScene
 end
+
 function Engine.transition(targetScene, duration)
     state.transition = {
         target = targetScene,
@@ -156,44 +193,55 @@ function Engine.transition(targetScene, duration)
         stage = "out"
     }
 end
+
 function Engine.isTransitioning()
     return state.transition ~= nil
 end
+
+
 function Engine.setViewport(w, h)
     state.manualViewport = true
     Engine.buffer:setSize(w, h)
-    if state.activeScene then
-        state.activeScene._staticDirty = true
+    if state.activeScene then 
+        state.activeScene._staticDirty = true 
     end
 end
+
 function Engine.setDesignResolution(w, h)
     debug.designW, debug.designH = w, h
 end
+
 function Engine.setMinResolution(w, h)
     debug.minW = w
     debug.minH = h
 end
+
 function Engine.getDesignResolution()
     return debug.designW, debug.designH
 end
+
 function Engine.getViewportOffset()
-    if not debug.designW or not debug.designH then
-        return 0, 0
+    if not debug.designW or not debug.designH then 
+        return 0, 0 
     end
     local tw, th = Engine.buffer:getSize()
-    return math.floor((tw - debug.designW) / 2),
+    return math.floor((tw - debug.designW) / 2), 
            math.floor((th - debug.designH) / 2)
 end
+
 function Engine.screenToViewport(sx, sy)
     local ox, oy = Engine.getViewportOffset()
     return sx - ox, sy - oy
 end
+
+
 function Engine.showDebug(enabled, alwaysOnTop)
     debug.enabled = enabled
     if alwaysOnTop ~= nil then
         debug.alwaysOnTop = alwaysOnTop
     end
 end
+
 function Engine._renderDebug()
     if not debug.enabled then return end
     local stats = string.format(
@@ -208,12 +256,15 @@ function Engine._renderDebug()
         "Entities: %d (Dyn) | %d (Stat)",
         debug.dynamicCount or 0, staticCount
     )
+
     Engine.buffer:drawText(1, 1, stats, "0", "f")
     Engine.buffer:drawText(1, 2, entInfo, "7", "f")
+
     if state.activeScene then
         state.activeScene._rowsToRestore[1] = true
         state.activeScene._rowsToRestore[2] = true
     end
+
     if debug.showLogs then
         local history = Engine.logger.getHistory()
         for i, entry in ipairs(history) do
@@ -224,18 +275,22 @@ function Engine._renderDebug()
         end
     end
 end
+
 function Engine.enableConsole(enabled)
     state.consoleEnabled = enabled
     if not enabled then
         Engine.console.close()
     end
 end
+
 function Engine.isConsoleEnabled()
     return state.consoleEnabled
 end
+
 function Engine.disableConsole()
     Engine.enableConsole(false)
 end
+
 function Engine._renderDebugTop()
     if not debug.enabled or not debug.alwaysOnTop then return end
     local termW, termH = Engine.buffer:getSize()
@@ -251,12 +306,15 @@ function Engine._renderDebugTop()
         "Entities: %d (Dyn) | %d (Stat)",
         debug.dynamicCount or 0, staticCount
     )
+
     Engine.buffer:drawText(1, 1, stats, "0", "f")
     Engine.buffer:drawText(1, 2, entInfo, "7", "f")
+
     if state.activeScene then
         state.activeScene._rowsToRestore[1] = true
         state.activeScene._rowsToRestore[2] = true
     end
+
     if debug.showLogs then
         local history = Engine.logger.getHistory()
         for i, entry in ipairs(history) do
@@ -267,25 +325,33 @@ function Engine._renderDebugTop()
         end
     end
 end
+
+
 local function updateDeltaTime()
     local currentTime = os.epoch("utc") / 1000
     local rawDelta = currentTime - state.lastTime
     state.lastTime = currentTime
+
     table.insert(state.deltaHistory, rawDelta)
     if #state.deltaHistory > config.deltaHistorySize then
         table.remove(state.deltaHistory, 1)
     end
+
     local sum = 0
     for _, dt in ipairs(state.deltaHistory) do
         sum = sum + dt
     end
     state.lastDeltaTime = sum / #state.deltaHistory
 end
+
+
 local function renderTransition()
     if not state.transition then return end
+
     state.transition.elapsed = state.transition.elapsed + state.lastDeltaTime
     local half = state.transition.duration / 2
     local progress = 0
+
     if state.transition.stage == "out" then
         progress = math.min(1, state.transition.elapsed / half)
         if state.transition.elapsed >= half then
@@ -299,6 +365,7 @@ local function renderTransition()
             return
         end
     end
+
     local tw, th = Engine.buffer:getSize()
     local curtainH = math.floor((th / 2) * progress)
     if curtainH > 0 then
@@ -306,8 +373,10 @@ local function renderTransition()
         Engine.buffer:drawRect(1, th - curtainH + 1, tw, curtainH, " ", "0", "f")
     end
 end
+
 local function updateFrame()
     local frameStart = os.epoch("utc")
+
     local curW, curH = term.getSize()
     if debug.minW and debug.minH and (curW < debug.minW or curH < debug.minH) then
         debug.unsupportedResolution = true
@@ -317,19 +386,23 @@ local function updateFrame()
         term.setCursorPos(1, 1)
         term.write("Terminal size not supported.")
         term.setCursorPos(1, 2)
-        term.write(string.format("Required: %dx%d | Current: %dx%d",
+        term.write(string.format("Required: %dx%d | Current: %dx%d", 
             debug.minW, debug.minH, curW, curH))
         os.sleep(0.2)
         state.lastTime = os.epoch("utc") / 1000
         return
     end
     debug.unsupportedResolution = false
+
     updateDeltaTime()
+
     Engine.tween.update(state.lastDeltaTime)
     Engine.timer.update(state.lastDeltaTime)
-    if state.activeScene then
-        state.activeScene:update(state.lastDeltaTime)
+
+    if state.activeScene then 
+        state.activeScene:update(state.lastDeltaTime) 
     end
+
     if state.activeScene then
         local ok, list = pcall(function() return state.activeScene:select("pos", "sprite") end)
         if ok and list then
@@ -340,32 +413,44 @@ local function updateFrame()
     else
         debug.dynamicCount = 0
     end
+
     if errorModule._shouldStop then
         state.running = false
         return
     end
+
     for _, fn in ipairs(callbacks.update) do
         fn(state.lastDeltaTime)
     end
+
     debug.updateTime = os.epoch("utc") - frameStart
     Engine.input._endFrame()
+
     local drawStart = os.epoch("utc")
-    if state.transition and state.activeScene then
-        state.activeScene._staticDirty = true
+
+    if state.transition and state.activeScene then 
+        state.activeScene._staticDirty = true 
     end
-    if state.activeScene then
-        state.activeScene:draw()
+
+    if state.activeScene then 
+        state.activeScene:draw() 
     end
+
     for _, fn in ipairs(callbacks.render) do
         fn()
     end
+
     renderTransition()
-    if state.consoleEnabled then
+
+    if state.consoleEnabled then 
         Engine.console.draw(Engine.buffer)
     end
+
     Engine._renderDebugTop()
+
     Engine.buffer:present()
     debug.drawTime = os.epoch("utc") - drawStart
+
     state.frameCount = state.frameCount + 1
     local now = os.clock()
     if now - state.fpsTimer >= 1 then
@@ -374,39 +459,49 @@ local function updateFrame()
         state.frameCount = 0
         state.fpsTimer = now
     end
+
     local workTime = (os.epoch("utc") - frameStart) / 1000
     local sleepTime = math.max(0, config.frameTime - workTime)
     local t = os.startTimer(sleepTime)
-    repeat
+    while true do
         local _, tid = os.pullEvent("timer")
-    until tid == t
+        if tid == t then break end
+    end
 end
+
+
 local function handleEvent(event)
     local consumed = false
+
     if state.activeScene and state.activeScene.ui then
         local ox, oy = Engine.getViewportOffset()
         consumed = state.activeScene.ui:handleEvent(event, ox, oy)
     end
+
     local consoleConsumed = false
     if state.consoleEnabled then
         local wasOpen = Engine.console.isOpen()
         consoleConsumed = Engine.console.handleEvent(event, consumed)
+
         if wasOpen and not Engine.console.isOpen() and state.activeScene then
             state.activeScene._staticDirty = true
         end
     end
+
     if consumed then
-        if event[1] == "mouse_click" then
-            Engine.input.clear()
+        if event[1] == "mouse_click" then 
+            Engine.input.clear() 
         end
     elseif not consoleConsumed then
         Engine.input.processEvent(table.unpack(event))
         Engine.network.processEvent(event)
         Engine.server.processEvent(event)
+
         Engine.event:emit(event[1], table.unpack(event, 2))
         if state.activeScene and state.activeScene.event then
             state.activeScene.event:emit(event[1], table.unpack(event, 2))
         end
+
         if state.activeScene and state.activeScene.onEvent then
             local ok, err = xpcall(state.activeScene.onEvent, tracebackHandler, event)
             if not ok then
@@ -414,23 +509,30 @@ local function handleEvent(event)
             end
         end
     end
+
     if event[1] == "term_resize" and not state.manualViewport then
         local nw, nh = term.getSize()
         Engine.buffer:setSize(nw, nh)
-        if state.activeScene then
-            state.activeScene._staticDirty = true
+        if state.activeScene then 
+            state.activeScene._staticDirty = true 
         end
     end
+
     for _, fn in ipairs(callbacks.event) do
         fn(event)
     end
+
     Engine.thread.update(table.unpack(event))
 end
+
+
 function Engine.start()
     state.running = true
     state.lastTime = os.epoch("utc") / 1000
     state.fpsTimer = os.clock()
+
     Engine.audio.refresh()
+
     Engine.console.setEnv(setmetatable({
         Engine = Engine,
         print = function(...)
@@ -441,28 +543,35 @@ function Engine.start()
             Engine.console.print(table.concat(parts, "\t"))
         end,
     }, { __index = _G }))
+
     Engine.thread.start(function()
         while state.running do
             updateFrame()
         end
     end)
+
     while state.running do
         local event = { os.pullEvent() }
         handleEvent(event)
     end
+
     Engine.buffer:restorePalette()
 end
+
 function Engine.stop()
     state.running = false
     Engine.buffer:restorePalette()
 end
+
 function Engine.isRunning()
     return state.running
 end
+
 return Engine
 ]=]
 paths["engine"] = "engine"
 sources["flimg"] = [=[
+
 
 local flimg = {
     VERSION = 1,
@@ -472,10 +581,13 @@ local flimg = {
     ENCODING_RAW = 0,
     ENCODING_RLE = 1,
 }
+
 local char, byte, sub, rep = string.char, string.byte, string.sub, string.rep
 local floor, min, max = math.floor, math.min, math.max
+
 local MODE_TO_BYTE = { pixel = 1, cell = 2 }
 local BYTE_TO_MODE = { [1] = "pixel", [2] = "cell" }
+
 local NATIVE_RGB = {
     [0] = 0xF0F0F0, 0xF2B233, 0xE57FD8, 0x99B2F2,
     0xDEDE6C, 0x7FCC19, 0xF2B2CC, 0x4C4C4C,
@@ -483,9 +595,11 @@ local NATIVE_RGB = {
     0x7F664C, 0x57A64E, 0xCC4C4C, 0x111111,
 }
 flimg.NATIVE_RGB = NATIVE_RGB
+
 local function fail(message, level)
     error("FLIMG: " .. message, (level or 1) + 1)
 end
+
 local function integer(value, name, low, high)
     if type(value) ~= "number" or value ~= floor(value)
         or value < low or value > high then
@@ -493,16 +607,20 @@ local function integer(value, name, low, high)
     end
     return value
 end
+
 local function u8(value)
     return char(value)
 end
+
 local function u16(value)
     return char(value % 256, floor(value / 256) % 256)
 end
+
 local function i16(value)
     if value < 0 then value = value + 65536 end
     return u16(value)
 end
+
 local function u32(value)
     return char(
         value % 256,
@@ -510,11 +628,14 @@ local function u32(value)
         floor(value / 65536) % 256,
         floor(value / 16777216) % 256)
 end
+
 local Reader = {}
 Reader.__index = Reader
+
 function Reader.new(data)
     return setmetatable({ data = data, pos = 1, size = #data }, Reader)
 end
+
 function Reader:take(length, label)
     if length < 0 or self.pos + length - 1 > self.size then
         fail("truncated " .. (label or "data") .. " at byte " .. self.pos, 2)
@@ -523,27 +644,33 @@ function Reader:take(length, label)
     self.pos = self.pos + length
     return result
 end
+
 function Reader:u8(label)
     local value = byte(self.data, self.pos)
     if value == nil then fail("truncated " .. (label or "u8"), 2) end
     self.pos = self.pos + 1
     return value
 end
+
 function Reader:u16(label)
     local a, b = byte(self:take(2, label), 1, 2)
     return a + b * 256
 end
+
 function Reader:i16(label)
     local value = self:u16(label)
     return value >= 32768 and value - 65536 or value
 end
+
 function Reader:u32(label)
     local a, b, c, d = byte(self:take(4, label), 1, 4)
     return a + b * 256 + c * 65536 + d * 16777216
 end
+
 local function hasFlag(value, flag)
     return value % (flag * 2) >= flag
 end
+
 local function parseRGB(value, label)
     if type(value) == "string" then
         local hex = value:gsub("#", "")
@@ -561,6 +688,7 @@ local function parseRGB(value, label)
     end
     return integer(value, label or "color", 0, 0xFFFFFF)
 end
+
 local function validatePaletteBytes(row, startIndex, label, paletteCount)
     local i, length = startIndex or 1, #row
     while i + 7 <= length do
@@ -578,6 +706,7 @@ local function validatePaletteBytes(row, startIndex, label, paletteCount)
         i = i + 1
     end
 end
+
 local function normalizePixelRow(row, width, label, paletteCount)
     if type(row) == "string" then
         if #row ~= width then fail(label .. " has width " .. #row .. ", expected " .. width, 2) end
@@ -597,6 +726,7 @@ local function normalizePixelRow(row, width, label, paletteCount)
     end
     return table.concat(out)
 end
+
 local function normalizeCellRow(row, width, label, paletteCount)
     if type(row) ~= "table" then fail(label .. " must be {text, foreground, background}", 2) end
     local text, fg, bg = row[1] or row.text, row[2] or row.fg, row[3] or row.bg
@@ -608,6 +738,7 @@ local function normalizeCellRow(row, width, label, paletteCount)
     validatePaletteBytes(bg, 1, label .. " background", paletteCount)
     return { text, fg, bg }
 end
+
 local function blankRows(mode, width, height)
     local rows = {}
     if mode == "pixel" then
@@ -619,6 +750,7 @@ local function blankRows(mode, width, height)
     end
     return rows
 end
+
 local function cloneRows(mode, rows)
     local result = {}
     if mode == "pixel" then
@@ -631,17 +763,20 @@ local function cloneRows(mode, rows)
     end
     return result
 end
+
 local function normalizeImage(source)
     if type(source) ~= "table" then fail("image must be a table", 2) end
     local mode = source.mode or "pixel"
     if not MODE_TO_BYTE[mode] then fail("mode must be 'pixel' or 'cell'", 2) end
     local width = integer(source.width, "width", 1, 65535)
     local height = integer(source.height, "height", 1, 65535)
+
     local palette = {}
     if type(source.palette) ~= "table" or #source.palette < 1 or #source.palette > 255 then
         fail("palette must contain 1 to 255 colors", 2)
     end
     for i = 1, #source.palette do palette[i] = parseRGB(source.palette[i], "palette color " .. i) end
+
     local sourceLayers = source.layers
     if type(sourceLayers) ~= "table" or #sourceLayers < 1 or #sourceLayers > 255 then
         fail("layers must contain 1 to 255 layer descriptors", 2)
@@ -662,6 +797,7 @@ local function normalizeImage(source)
             visible = layer.visible ~= false,
         }
     end
+
     local sourceFrames = source.frames
     if type(sourceFrames) ~= "table" or #sourceFrames < 1 or #sourceFrames > 65535 then
         fail("frames must contain 1 to 65535 frames", 2)
@@ -704,6 +840,7 @@ local function normalizeImage(source)
         end
         frames[frameIndex] = frame
     end
+
     return {
         format = "FLIMG",
         version = 1,
@@ -719,9 +856,11 @@ local function normalizeImage(source)
             "keyframeInterval", 1, 255),
     }
 end
+
 function flimg.normalize(source)
     return normalizeImage(source)
 end
+
 function flimg.rleEncode(data)
     if type(data) ~= "string" then fail("rleEncode expects a string", 2) end
     local out, length, i = {}, #data, 1
@@ -756,6 +895,7 @@ function flimg.rleEncode(data)
     end
     return table.concat(out)
 end
+
 function flimg.rleDecode(data, expectedLength)
     if type(data) ~= "string" then fail("rleDecode expects a string", 2) end
     local reader, out, produced = Reader.new(data), {}, 0
@@ -778,11 +918,13 @@ function flimg.rleDecode(data, expectedLength)
     end
     return result
 end
+
 local function cellDifferent(a, b, x)
     return byte(a[1], x) ~= byte(b[1], x)
         or byte(a[2], x) ~= byte(b[2], x)
         or byte(a[3], x) ~= byte(b[3], x)
 end
+
 local function differenceBounds(mode, current, previous, width, height, full)
     if full then return 1, 1, width, height end
     local x1, y1, x2, y2 = width + 1, height + 1, 0, 0
@@ -808,6 +950,7 @@ local function differenceBounds(mode, current, previous, width, height, full)
     if x2 == 0 then return nil end
     return x1, y1, x2, y2
 end
+
 local function extractPatch(mode, rows, x1, y1, x2, y2)
     local out = {}
     if mode == "pixel" then
@@ -819,6 +962,7 @@ local function extractPatch(mode, rows, x1, y1, x2, y2)
     end
     return table.concat(out)
 end
+
 local function encodePatch(layerIndex, x1, y1, x2, y2, raw)
     local compressed = flimg.rleEncode(raw)
     local encoding, payload = flimg.ENCODING_RAW, raw
@@ -829,12 +973,14 @@ local function encodePatch(layerIndex, x1, y1, x2, y2, raw)
         u32(#raw), u32(#payload), payload,
     })
 end
+
 function flimg.encode(source, options)
     local image = normalizeImage(source)
     options = options or {}
     local interval = integer(options.keyframeInterval or image.keyframeInterval,
         "keyframeInterval", 1, 255)
     local framePayloads, frameEntries = {}, {}
+
     for frameIndex = 1, #image.frames do
         local keyframe = frameIndex == 1 or (frameIndex - 1) % interval == 0
         local patches = {}
@@ -858,6 +1004,7 @@ function flimg.encode(source, options)
             length = #payload,
         }
     end
+
     local flags = (image.loop and 1 or 0) + (image.pingPong and 2 or 0)
     local header = {
         flimg.MAGIC, u8(flimg.VERSION), u8(MODE_TO_BYTE[image.mode]), u8(flags),
@@ -876,6 +1023,7 @@ function flimg.encode(source, options)
             u8(layer.visible and 1 or 0),
         })
     end
+
     local offset, directory = 0, {}
     for i = 1, #frameEntries do
         local entry = frameEntries[i]
@@ -885,10 +1033,12 @@ function flimg.encode(source, options)
     end
     return table.concat(header) .. table.concat(directory) .. table.concat(framePayloads)
 end
+
 local function replaceSpan(source, startIndex, replacement)
     return sub(source, 1, startIndex - 1) .. replacement
         .. sub(source, startIndex + #replacement)
 end
+
 local function applyPatch(mode, rows, x, y, width, height, raw)
     local pos = 1
     if mode == "pixel" then
@@ -915,6 +1065,7 @@ local function applyPatch(mode, rows, x, y, width, height, raw)
         end
     end
 end
+
 function flimg.decode(data)
     if type(data) ~= "string" then fail("decode expects a binary string", 2) end
     local reader = Reader.new(data)
@@ -935,11 +1086,13 @@ function flimg.decode(data)
         fail("palette, layer, and frame counts must be non-zero", 2)
     end
     if interval == 0 then fail("keyframe interval must be non-zero", 2) end
+
     local palette = {}
     for i = 1, paletteCount do
         local r, g, b = byte(reader:take(3, "palette"), 1, 3)
         palette[i] = r * 65536 + g * 256 + b
     end
+
     local layers = {}
     for i = 1, layerCount do
         local nameLength = reader:u8("layer name length")
@@ -953,6 +1106,7 @@ function flimg.decode(data)
         if layer.width == 0 or layer.height == 0 then fail("layer dimensions must be non-zero", 2) end
         layers[i] = layer
     end
+
     local directory = {}
     for i = 1, frameCount do
         directory[i] = {
@@ -964,6 +1118,7 @@ function flimg.decode(data)
         if directory[i].duration == 0 then fail("frame duration must be non-zero", 2) end
     end
     local dataStart = reader.pos
+
     local frames, previous = {}, {}
     for i = 1, layerCount do
         previous[i] = blankRows(mode, layers[i].width, layers[i].height)
@@ -1031,6 +1186,7 @@ function flimg.decode(data)
         end
         frames[frameIndex] = frame
     end
+
     return {
         format = "FLIMG", version = version, mode = mode,
         width = width, height = height, palette = palette,
@@ -1039,6 +1195,7 @@ function flimg.decode(data)
         keyframeInterval = interval,
     }
 end
+
 local function readFile(path)
     if fs and fs.open then
         local handle = fs.open(path, "rb") or fs.open(path, "r")
@@ -1053,6 +1210,7 @@ local function readFile(path)
     handle:close()
     return data
 end
+
 local function writeFile(path, data)
     if fs and fs.open then
         local handle = fs.open(path, "wb") or fs.open(path, "w")
@@ -1066,14 +1224,17 @@ local function writeFile(path, data)
     handle:write(data)
     handle:close()
 end
+
 function flimg.load(path)
     return flimg.decode(readFile(path))
 end
+
 function flimg.save(path, image, options)
     local data = flimg.encode(image, options)
     writeFile(path, data)
     return #data
 end
+
 local function overlaySpan(target, source, targetX, sourceX, length)
     local out = {}
     for offset = 0, length - 1 do
@@ -1085,6 +1246,7 @@ local function overlaySpan(target, source, targetX, sourceX, length)
     return sub(target, 1, targetX - 1) .. table.concat(out)
         .. sub(target, targetX + length)
 end
+
 function flimg.compose(image, frameIndex)
     image = image.format == "FLIMG" and image or normalizeImage(image)
     local frame = image.frames[frameIndex or 1]
@@ -1122,6 +1284,7 @@ function flimg.compose(image, frameIndex)
     end
     return rows
 end
+
 local function addPaletteColor(palette, lookup, rgb)
     local known = lookup[rgb]
     if known then return known end
@@ -1130,6 +1293,7 @@ local function addPaletteColor(palette, lookup, rgb)
     lookup[rgb] = #palette
     return #palette
 end
+
 function flimg.fromBimg(bimg)
     if type(bimg) ~= "table" or type(bimg[1]) ~= "table" or type(bimg[1][1]) ~= "table" then
         fail("invalid BIMG table", 2)
@@ -1167,9 +1331,11 @@ function flimg.fromBimg(bimg)
         loop = true,
     })
 end
+
 local function rowCell(row, index)
     return type(row) == "string" and row:sub(index, index) or row[index]
 end
+
 local function nativeIndexOf(value)
     if type(value) ~= "number" or value < 1 or value > 32768 then return nil end
     local current = 1
@@ -1178,6 +1344,7 @@ local function nativeIndexOf(value)
         current = current * 2
     end
 end
+
 function flimg.fromSprite(sprite, options)
     options = options or {}
     if type(sprite) ~= "table" then fail("invalid sprite table", 2) end
@@ -1185,6 +1352,7 @@ function flimg.fromSprite(sprite, options)
     local height = integer(sprite.height, "sprite height", 1, 65535)
     local frameCount = integer(sprite.frameCount or #sprite, "sprite frame count", 1, 65535)
     local palette, lookup = {}, {}
+
     local function colorIndex(value)
         if value == nil or value == false or value == " " or value == "" then return 0 end
         if options.resolveColor then value = options.resolveColor(value) end
@@ -1196,6 +1364,7 @@ function flimg.fromSprite(sprite, options)
         if native then return addPaletteColor(palette, lookup, NATIVE_RGB[native]) end
         return addPaletteColor(palette, lookup, parseRGB(value, "sprite color"))
     end
+
     local frames = {}
     for frameIndex = 1, frameCount do
         local frame = sprite[frameIndex]
@@ -1230,13 +1399,18 @@ function flimg.fromSprite(sprite, options)
         loop = sprite.loop ~= false,
     })
 end
+
 return flimg
 ]=]
 paths["flimg"] = "flimg"
 sources["core.ai"] = [=[
 
+
 local ai = {}
+
+
 local BrainTimer = {}
+
 function BrainTimer.new(kind, seconds, fn)
     assert(kind == "once" or kind == "repeat", "BrainTimer.new — invalid kind '" .. tostring(kind) .. "'")
     assert(type(seconds) == "number" and seconds >= 0, "BrainTimer.new — invalid seconds (must be non-negative number)")
@@ -1248,14 +1422,20 @@ function BrainTimer.new(kind, seconds, fn)
         fn = fn
     }
 end
+
+
 local BrainTransition = {}
+
 function BrainTransition.new(from, to, cond)
     assert(type(from) == "string", "BrainTransition.new — from must be a string")
     assert(type(to) == "string", "BrainTransition.new — to must be a string")
     assert(type(cond) == "function", "BrainTransition.new — cond must be a function")
     return { from = from, to = to, cond = cond }
 end
+
+
 local BrainState = {}
+
 function BrainState.new(onEnter, onUpdate, onExit, onDraw)
     return {
         onEnter = onEnter,
@@ -1264,8 +1444,11 @@ function BrainState.new(onEnter, onUpdate, onExit, onDraw)
         onDraw = onDraw
     }
 end
+
+
 local Brain = {}
 Brain.__index = Brain
+
 function Brain.new(states, initialState, data)
     local self = setmetatable({}, Brain)
     self._states = states or {}
@@ -1278,20 +1461,28 @@ function Brain.new(states, initialState, data)
     self.memory = {}
     self.id = nil
     self.scene = nil
+
     if data then
         for k, v in pairs(data) do self[k] = v end
     end
+
     if initialState then self:start(initialState) end
+
     return self
 end
+
+
 function Brain:addState(name, callbacks)
     assert(type(name) == "string", "Brain:addState — name must be a string")
     local cb = callbacks or {}
     self._states[name] = BrainState.new(cb.onEnter, cb.onUpdate, cb.onExit, cb.onDraw)
 end
+
 function Brain:addTransition(from, to, condition)
     table.insert(self._transitions, BrainTransition.new(from, to, condition))
 end
+
+
 function Brain:start(name)
     assert(self._states[name], "Brain:start — unknown state '" .. tostring(name) .. "'")
     self._stack = { name }
@@ -1302,6 +1493,7 @@ function Brain:start(name)
     local s = self._states[name]
     if s and s.onEnter then s.onEnter(self, nil) end
 end
+
 function Brain:go(name)
     assert(self._states[name], "Brain:go — unknown state '" .. tostring(name) .. "'")
     if name == self.current then return end
@@ -1322,6 +1514,7 @@ function Brain:go(name)
     local s = self._states[name]
     if s and s.onEnter then s.onEnter(self, prev) end
 end
+
 function Brain:push(name)
     assert(self._states[name], "Brain:push — unknown state '" .. tostring(name) .. "'")
     local prev = self.current
@@ -1337,6 +1530,7 @@ function Brain:push(name)
     local s = self._states[name]
     if s and s.onEnter then s.onEnter(self, prev) end
 end
+
 function Brain:pop()
     if #self._stack <= 1 then return end
     local prev = self.current
@@ -1351,12 +1545,16 @@ function Brain:pop()
     local s = self._states[next]
     if s and s.onEnter then s.onEnter(self, prev) end
 end
+
+
 function Brain:after(seconds, fn)
     table.insert(self._timers, BrainTimer.new("once", seconds, fn))
 end
+
 function Brain:every(seconds, fn)
     table.insert(self._timers, BrainTimer.new("repeat", seconds, fn))
 end
+
 function Brain:_tickTimers(dt)
     local i = 1
     while i <= #self._timers do
@@ -1375,16 +1573,21 @@ function Brain:_tickTimers(dt)
         end
     end
 end
+
+
 function Brain:update(dt)
     if not self.current then return end
+
     for _, tr in ipairs(self._transitions) do
         if tr.from == self.current and tr.cond(self) then
             self:go(tr.to)
             break
         end
     end
+
     self.timer = self.timer + dt
     self:_tickTimers(dt)
+
     local s = self._states[self.current]
     if s and s.onUpdate then
         local next = s.onUpdate(self, dt)
@@ -1393,48 +1596,64 @@ function Brain:update(dt)
         end
     end
 end
+
 function Brain:draw()
     if not self.current then return end
     local s = self._states[self.current]
     if s and s.onDraw then s.onDraw(self) end
 end
-function Brain:is(name)
+
+
+function Brain:is(name)   
     return self.current == name
 end
+
 function Brain:was(name)
     return self.previousState == name
 end
+
 function Brain:timeInState()
     return self.timer
+
 end
+
 function Brain:stackDepth()
     return #self._stack
 end
+
 function Brain:stateCount()
     local n = 0
     for _ in pairs(self._states) do n = n + 1 end
     return n
 end
+
+
 function ai.canSee(id, targetId, scene, maxDist, layerMask)
     local pos  = scene.components.pos[id]
     local tPos = scene.components.pos[targetId]
     if not pos or not tPos then return false end
+
     if maxDist and pos:dist(tPos) > maxDist then return false end
+
     local hit, _, _, hitId = scene:castRay(pos.x, pos.y, tPos.x, tPos.y, maxDist or 100, id, layerMask)
     return (not hit) or (hitId == targetId)
 end
+
 function ai.canHear(id, targetId, scene, maxDist)
     local pos  = scene.components.pos[id]
     local tPos = scene.components.pos[targetId]
     if not pos or not tPos then return false end
     return pos:dist(tPos) <= maxDist
 end
+
 function ai.nearest(id, scene, tag, maxDist)
     local pos = scene.components.pos[id]
     if not pos then return nil, nil end
+
     local bestId, bestDist = nil, maxDist or math.huge
     local tags      = scene.components.tags
     local positions = scene.components.pos
+
     for otherId, otherPos in pairs(positions) do
         if otherId ~= id then
             local hasTag = not tag or (tags and tags[otherId] and tags[otherId][tag])
@@ -1447,12 +1666,16 @@ function ai.nearest(id, scene, tag, maxDist)
             end
         end
     end
+
     return bestId, bestDist
 end
+
+
 function ai.system(scene)
     return function(dt, ids, components)
         local brains = components.brain
         if not brains then return end
+
         for _, id in ipairs(ids) do
             local brain = brains[id]
             if brain then
@@ -1463,18 +1686,26 @@ function ai.system(scene)
         end
     end
 end
+
+
 ai.Brain = Brain
 ai.BrainState = BrainState
 ai.BrainTimer = BrainTimer
 ai.BrainTransition = BrainTransition
+
 return ai
 ]=]
 paths["core.ai"] = "core/ai"
 sources["core.audio"] = [=[
 
+
 local require = ...
+
 local logger = require("core.logger")
 local thread = require("core.thread")
+
+
+
 local AudioModule = {
     _speakers = {},
     _initialized = false,
@@ -1484,59 +1715,79 @@ local AudioModule = {
     _muted = false,
     _masterVolume = 1.0,
 }
+
+
 function AudioModule.refresh()
     AudioModule._speakers = { peripheral.find("speaker") }
     AudioModule._initialized = true
+
     if #AudioModule._speakers == 0 then
         logger.warn("Audio: No speakers found. Audio disabled.")
     else
         logger.info(string.format("Audio: %d speaker(s) detected.", #AudioModule._speakers))
     end
 end
+
 function AudioModule.isReady()
     return AudioModule._initialized and #AudioModule._speakers > 0
 end
+
 function AudioModule.getSpeakerCount()
     return #AudioModule._speakers
 end
+
+
 function AudioModule.setMuted(muted)
     AudioModule._muted = muted == true
 end
+
 function AudioModule.isMuted()
     return AudioModule._muted
 end
+
 function AudioModule.setVolume(volume)
     AudioModule._masterVolume = math.max(0, math.min(1, volume))
 end
+
 function AudioModule.getVolume()
     return AudioModule._masterVolume
 end
+
+
 function AudioModule.playNote(instrument, pitch, volume)
     if AudioModule._muted then return end
     if not AudioModule._initialized then AudioModule.refresh() end
     if #AudioModule._speakers == 0 then return end
+
     local finalVolume = math.max(0, math.min(3, (volume or 1) * AudioModule._masterVolume))
     local instr = instrument or "harp"
     local p = pitch or 12
+
     for _, speaker in ipairs(AudioModule._speakers) do
         pcall(function()
             speaker.playNote(instr, finalVolume, p)
         end)
     end
 end
+
+
 function AudioModule.registerSfx(name, sequence)
     if not name or type(sequence) ~= "table" then
         logger.error("Audio: Invalid SFX registration")
         return
     end
+
     AudioModule._sfxLibrary[name] = sequence
 end
+
 function AudioModule.playSfx(name)
     local sequence = AudioModule._sfxLibrary[name]
+
     if not sequence then
         logger.error("Audio: Unknown SFX '" .. tostring(name) .. "'")
         return
     end
+
     thread.start(function()
         for _, note in ipairs(sequence) do
             if note.delay then
@@ -1546,12 +1797,15 @@ function AudioModule.playSfx(name)
         end
     end)
 end
+
 function AudioModule.hasSfx(name)
     return AudioModule._sfxLibrary[name] ~= nil
 end
+
 function AudioModule.unregisterSfx(name)
     AudioModule._sfxLibrary[name] = nil
 end
+
 function AudioModule.getSfxList()
     local names = {}
     for name in pairs(AudioModule._sfxLibrary) do
@@ -1559,6 +1813,8 @@ function AudioModule.getSfxList()
     end
     return names
 end
+
+
 function AudioModule.playSong(songData, loop)
     if not songData then
         logger.error("Audio: playSong called with nil songData")
@@ -1568,30 +1824,37 @@ function AudioModule.playSong(songData, loop)
         logger.error("Audio: Invalid or missing tempo in songData")
         return
     end
+
     AudioModule.stopSong()
     AudioModule._currentSong = songData
+
     AudioModule._songThread = thread.start(function()
         local tickTime = 1 / songData.tempo
         local playing = true
+
         while playing do
             for tick = 0, songData.length do
                 if AudioModule._currentSong ~= songData then
                     return
                 end
+
                 local notes = songData.ticks[tick]
                 if notes then
                     for _, note in ipairs(notes) do
                         AudioModule.playNote(note.instrument, note.pitch, note.volume)
                     end
                 end
+
                 os.sleep(tickTime)
             end
+
             if not loop then
                 playing = false
             end
         end
     end)
 end
+
 function AudioModule.stopSong()
     if AudioModule._songThread then
         thread.stop(AudioModule._songThread)
@@ -1599,27 +1862,38 @@ function AudioModule.stopSong()
     end
     AudioModule._currentSong = nil
 end
+
 function AudioModule.isSongPlaying()
     return AudioModule._currentSong ~= nil
 end
+
 function AudioModule.getCurrentSong()
     return AudioModule._currentSong
 end
+
+
 function AudioModule.stopAll()
     AudioModule.stopSong()
 end
+
 return AudioModule
 ]=]
 paths["core.audio"] = "core/audio"
 sources["core.buffer"] = [=[
 
+
 local require = ...
+
+
 local color = require("core.color")
 local flimg = require("flimg")
+
 local buffer = {}
+
 local WHITE = color.encode("0")
 local BLACK = color.encode("f")
 local rep, char = string.rep, string.char
+
 local move = table.move or function(source, first, last, targetStart, target)
     target = target or source
     if target == source and targetStart > first and targetStart <= last then
@@ -1629,13 +1903,20 @@ local move = table.move or function(source, first, last, targetStart, target)
     end
     return target
 end
+
 local Buffer = {}
 Buffer.__index = Buffer
+
+
 local Surface = {}
 Surface.__index = Surface
+
+
 local mosaicChars = {}
 for mask = 0, 31 do mosaicChars[mask] = string.char(128 + mask) end
+
 local mosaicCache = {}
+
 local function nearestOf(value, a, b)
     local v = color.getRGB(value:byte())
     local ar = color.getRGB(a:byte())
@@ -1646,10 +1927,12 @@ local function nearestOf(value, a, b)
     local db = bdr * bdr + bdg * bdg + bdb * bdb
     return da <= db and 0 or 1
 end
+
 local function compileMosaic(c1, c2, c3, c4, c5, c6)
     local key = c1 .. c2 .. c3 .. c4 .. c5 .. c6
     local cached = mosaicCache[key]
     if cached then return cached[1], cached[2], cached[3] end
+
     local values = { c1, c2, c3, c4, c5, c6 }
     local counts, order = {}, {}
     for i = 1, 6 do
@@ -1661,6 +1944,7 @@ local function compileMosaic(c1, c2, c3, c4, c5, c6)
             counts[c] = counts[c] + 1
         end
     end
+
     local a, b
     for _, c in ipairs(order) do
         if not a or counts[c] > counts[a] then
@@ -1669,11 +1953,13 @@ local function compileMosaic(c1, c2, c3, c4, c5, c6)
             b = c
         end
     end
+
     if not b then
         cached = { " ", a, a }
         mosaicCache[key] = cached
         return cached[1], cached[2], cached[3]
     end
+
     local bits = {}
     for i = 1, 6 do
         local c = values[i]
@@ -1681,6 +1967,7 @@ local function compileMosaic(c1, c2, c3, c4, c5, c6)
         elseif c == b then bits[i] = 1
         else bits[i] = nearestOf(c, a, b) end
     end
+
     local pivot = bits[6]
     local mask = 0
     if bits[1] ~= pivot then mask = mask + 1 end
@@ -1688,12 +1975,15 @@ local function compileMosaic(c1, c2, c3, c4, c5, c6)
     if bits[3] ~= pivot then mask = mask + 4 end
     if bits[4] ~= pivot then mask = mask + 8 end
     if bits[5] ~= pivot then mask = mask + 16 end
+
     local fg, bg
     if pivot == 0 then fg, bg = b, a else fg, bg = a, b end
     cached = { mosaicChars[mask], fg, bg }
     mosaicCache[key] = cached
     return cached[1], cached[2], cached[3]
 end
+
+
 local function newRows(width, height, textValue, fgValue, bgValue)
     local text, fg, bg = {}, {}, {}
     for y = 1, height do
@@ -1707,6 +1997,7 @@ local function newRows(width, height, textValue, fgValue, bgValue)
     end
     return text, fg, bg
 end
+
 local function resetContext(surface)
     local owner = surface._owner
     surface._ox, surface._oy = 0, 0
@@ -1714,6 +2005,7 @@ local function resetContext(surface)
     surface._clipX2, surface._clipY2 = owner._w, owner._h
     surface._stack, surface._stackN = {}, 0
 end
+
 local function markDirty(surface, x1, y1, x2, y2)
     local owner = surface._owner
     x1, y1 = math.max(1, x1), math.max(1, y1)
@@ -1724,10 +2016,12 @@ local function markDirty(surface, x1, y1, x2, y2)
     if x2 > surface._dirtyX2 then surface._dirtyX2 = x2 end
     if y2 > surface._dirtyY2 then surface._dirtyY2 = y2 end
 end
+
 local function resetDirty(surface)
     surface._dirtyX1, surface._dirtyY1 = math.huge, math.huge
     surface._dirtyX2, surface._dirtyY2 = 0, 0
 end
+
 local function resetSurface(surface)
     local owner = surface._owner
     if surface._opaque then
@@ -1743,6 +2037,7 @@ local function resetSurface(surface)
     resetDirty(surface)
     markDirty(surface, 1, 1, owner._w, owner._h)
 end
+
 local function createSurface(owner, name, zIndex, opaque)
     local surface = setmetatable({
         _owner = owner,
@@ -1756,24 +2051,29 @@ local function createSurface(owner, name, zIndex, opaque)
     resetSurface(surface)
     return surface
 end
+
 local function inClip(surface, x, y)
     return x >= surface._clipX1 and x <= surface._clipX2
         and y >= surface._clipY1 and y <= surface._clipY2
 end
+
 local function encodeSurfaceColor(surface, value, nativeDefault)
     if surface._opaque and value == nil then return color.encode(nativeDefault) end
     return color.encode(value)
 end
+
 local function ensureSubpixels(surface)
     if surface._spBits then return end
     surface._spFg, surface._spBg, surface._spBits = {}, {}, {}
 end
+
 local function virtualClip(surface)
     return (surface._clipX1 - 1) * 2 + 1,
         (surface._clipY1 - 1) * 3 + 1,
         surface._clipX2 * 2,
         surface._clipY2 * 3
 end
+
 local function storeSubpixel(surface, vx, vy, encoded, bgEncoded)
     local virtualWidth = surface._owner._w * 2
     local index = (vy - 1) * virtualWidth + vx
@@ -1781,6 +2081,7 @@ local function storeSubpixel(surface, vx, vy, encoded, bgEncoded)
     if bgEncoded ~= nil then surface._spBg[index] = bgEncoded end
     surface._spBits[index] = true
 end
+
 local function markSubpixelArea(surface, vx1, vy1, vx2, vy2)
     local cellX1 = math.floor((vx1 + 1) / 2)
     local cellY1 = math.floor((vy1 + 2) / 3)
@@ -1792,16 +2093,21 @@ local function markSubpixelArea(surface, vx1, vy1, vx2, vy2)
     if cellY2 > surface._spY2 then surface._spY2 = cellY2 end
     markDirty(surface, cellX1, cellY1, cellX2, cellY2)
 end
+
 local function rowValue(row, index)
     if type(row) == "string" then return row:sub(index, index) end
     return row and row[index] or nil
 end
+
+
 function Surface:getSize()
     return self._owner._w, self._owner._h
 end
+
 function Surface:getVirtualSize()
     return self._owner._w * 2, self._owner._h * 3
 end
+
 function Surface:setVisible(visible)
     visible = visible ~= false
     if self.visible ~= visible then
@@ -1810,6 +2116,7 @@ function Surface:setVisible(visible)
     end
     return self
 end
+
 function Surface:setZIndex(zIndex)
     zIndex = tonumber(zIndex) or 0
     if self.zIndex ~= zIndex then
@@ -1819,6 +2126,7 @@ function Surface:setZIndex(zIndex)
     end
     return self
 end
+
 function Surface:push(x, y, width, height)
     x, y = math.floor(x or 1), math.floor(y or 1)
     width, height = math.floor(width or 0), math.floor(height or 0)
@@ -1827,6 +2135,7 @@ function Surface:push(x, y, width, height)
     stack[n + 3], stack[n + 4] = self._clipX1, self._clipY1
     stack[n + 5], stack[n + 6] = self._clipX2, self._clipY2
     self._stackN = n + 6
+
     local ox, oy = self._ox + x - 1, self._oy + y - 1
     self._ox, self._oy = ox, oy
     self._clipX1 = math.max(self._clipX1, ox + 1)
@@ -1835,6 +2144,7 @@ function Surface:push(x, y, width, height)
     self._clipY2 = math.min(self._clipY2, oy + height)
     return self
 end
+
 function Surface:pop()
     local n, stack = self._stackN, self._stack
     if n < 6 then error("Obsidian Buffer: clip stack underflow", 2) end
@@ -1845,6 +2155,7 @@ function Surface:pop()
     self._stackN = n - 6
     return self
 end
+
 function Surface:setClip(x1, y1, x2, y2)
     local owner = self._owner
     self._clipX1 = math.max(1, math.floor(x1 or 1))
@@ -1853,12 +2164,14 @@ function Surface:setClip(x1, y1, x2, y2)
     self._clipY2 = math.min(owner._h, math.floor(y2 or owner._h))
     return self
 end
+
 function Surface:clearClip()
     local owner = self._owner
     self._clipX1, self._clipY1 = 1, 1
     self._clipX2, self._clipY2 = owner._w, owner._h
     return self
 end
+
 function Surface:clear(charValue, fore, back)
     local owner = self._owner
     local textValue, fgValue, bgValue
@@ -1880,10 +2193,12 @@ function Surface:clear(charValue, fore, back)
     markDirty(self, 1, 1, owner._w, owner._h)
     return self
 end
+
 function Surface:drawText(x, y, text, fore, back)
     x, y = math.floor(x or 1) + self._ox, math.floor(y or 1) + self._oy
     text = tostring(text or "")
     if y < self._clipY1 or y > self._clipY2 or #text == 0 then return self end
+
     local sourceStart = 1
     local drawStart, drawEnd = x, x + #text - 1
     if drawStart < self._clipX1 then
@@ -1892,6 +2207,7 @@ function Surface:drawText(x, y, text, fore, back)
     end
     drawEnd = math.min(drawEnd, self._clipX2)
     if drawStart > drawEnd then return self end
+
     local fgValue = encodeSurfaceColor(self, fore, "0")
     local bgValue = encodeSurfaceColor(self, back, "f")
     local rowT, rowF, rowB = self._text[y], self._fg[y], self._bg[y]
@@ -1904,6 +2220,7 @@ function Surface:drawText(x, y, text, fore, back)
     markDirty(self, drawStart, y, drawEnd, y)
     return self
 end
+
 function Surface:drawLine(y, text, fore, back)
     local width = self._owner._w
     text = tostring(text or "")
@@ -1911,6 +2228,7 @@ function Surface:drawLine(y, text, fore, back)
     elseif #text > width then text = text:sub(1, width) end
     return self:drawText(1, y, text, fore, back)
 end
+
 function Surface:drawRect(x, y, width, height, charValue, fore, back)
     width, height = math.floor(width or 0), math.floor(height or 0)
     if width <= 0 or height <= 0 then return self end
@@ -1924,10 +2242,12 @@ function Surface:drawRect(x, y, width, height, charValue, fore, back)
     for dy = 0, height - 1 do self:drawText(x, y + dy, row, fore, back) end
     return self
 end
+
 function Surface:drawSprite(frame, x, y, camX, camY)
     if not frame or not frame[1] or not frame[2] or not frame[3] then return self end
     local sx = math.floor((x or 1) - (camX or 0)) + self._ox
     local sy = math.floor((y or 1) - (camY or 0)) + self._oy
+
     for rowIndex = 1, #frame[1] do
         local ty = sy + rowIndex - 1
         if ty >= self._clipY1 and ty <= self._clipY2 then
@@ -1964,6 +2284,7 @@ function Surface:drawSprite(frame, x, y, camX, camY)
     end
     return self
 end
+
 local function imagePalette(image)
     if image._obsidianPalette then return image._obsidianPalette end
     local mapped = {}
@@ -1981,6 +2302,7 @@ local function imagePalette(image)
     image._composedFrames = image._composedFrames or {}
     return mapped
 end
+
 function Surface:drawImage(image, x, y, frameIndex, camX, camY)
     if type(image) ~= "table" or image.format ~= "FLIMG" then
         error("Obsidian: drawImage expects a decoded FLIMG image", 2)
@@ -1995,6 +2317,7 @@ function Surface:drawImage(image, x, y, frameIndex, camX, camY)
     local palette = imagePalette(image)
     local cellX = math.floor((x or 1) - (camX or 0)) + self._ox
     local cellY = math.floor((y or 1) - (camY or 0)) + self._oy
+
     if image.mode == "pixel" then
         local clipX1, clipY1, clipX2, clipY2 = virtualClip(self)
         local originX, originY = (cellX - 1) * 2, (cellY - 1) * 3
@@ -2021,6 +2344,7 @@ function Surface:drawImage(image, x, y, frameIndex, camX, camY)
         if dirtyX1 <= dirtyX2 then markSubpixelArea(self, dirtyX1, dirtyY1, dirtyX2, dirtyY2) end
         return self
     end
+
     for sourceY = 1, image.height do
         local targetY = cellY + sourceY - 1
         if targetY >= self._clipY1 and targetY <= self._clipY2 then
@@ -2045,11 +2369,13 @@ function Surface:drawImage(image, x, y, frameIndex, camX, camY)
     end
     return self
 end
+
 function Surface:drawSubpixel(vx, vy, value, bgValue)
     vx, vy = math.floor(vx or 1) + self._ox * 2,
         math.floor(vy or 1) + self._oy * 3
     local clipVx1, clipVy1, clipVx2, clipVy2 = virtualClip(self)
     if vx < clipVx1 or vx > clipVx2 or vy < clipVy1 or vy > clipVy2 then return self end
+
     local encoded = color.encode(value)
     if not encoded then return self end
     local bgEncoded
@@ -2061,6 +2387,7 @@ function Surface:drawSubpixel(vx, vy, value, bgValue)
     markSubpixelArea(self, vx, vy, vx, vy)
     return self
 end
+
 function Surface:drawSubpixelRect(vx, vy, width, height, value, bgValue)
     width, height = math.floor(width or 0), math.floor(height or 0)
     if width <= 0 or height <= 0 then return self end
@@ -2071,6 +2398,7 @@ function Surface:drawSubpixelRect(vx, vy, width, height, value, bgValue)
     x1, y1 = math.max(x1, clipX1), math.max(y1, clipY1)
     x2, y2 = math.min(x2, clipX2), math.min(y2, clipY2)
     if x1 > x2 or y1 > y2 then return self end
+
     local encoded = color.encode(value)
     if not encoded then return self end
     local bgEncoded
@@ -2086,6 +2414,7 @@ function Surface:drawSubpixelRect(vx, vy, width, height, value, bgValue)
     markSubpixelArea(self, x1, y1, x2, y2)
     return self
 end
+
 function Surface:drawSubpixelLine(x1, y1, x2, y2, value)
     x1, y1 = math.floor(x1) + self._ox * 2, math.floor(y1) + self._oy * 3
     x2, y2 = math.floor(x2) + self._ox * 2, math.floor(y2) + self._oy * 3
@@ -2112,7 +2441,9 @@ function Surface:drawSubpixelLine(x1, y1, x2, y2, value)
     end
     return self
 end
+
 Surface.drawPixel = Surface.drawSubpixel
+
 function Surface:clearSubpixels()
     if self._spX1 <= self._spX2 and self._spY1 <= self._spY2 then
         markDirty(self, self._spX1, self._spY1, self._spX2, self._spY2)
@@ -2122,6 +2453,7 @@ function Surface:clearSubpixels()
     self._spX2, self._spY2 = 0, 0
     return self
 end
+
 function Surface:copyTo(target)
     target.t, target.f, target.b = target.t or {}, target.f or {}, target.b or {}
     local width, height = self._owner._w, self._owner._h
@@ -2142,6 +2474,7 @@ function Surface:copyTo(target)
     end
     return target
 end
+
 function Surface:copyFrom(source)
     local width, height = self._owner._w, self._owner._h
     for y = 1, height do
@@ -2165,6 +2498,7 @@ function Surface:copyFrom(source)
     markDirty(self, 1, 1, width, height)
     return self
 end
+
 function Surface:restoreLine(y, source)
     local width, height = self._owner._w, self._owner._h
     if y < 1 or y > height or not source.t or not source.t[y] then return self end
@@ -2192,9 +2526,12 @@ function Surface:restoreLine(y, source)
     markDirty(self, 1, y, width, y)
     return self
 end
+
 function Surface:present()
     return self._owner:present()
 end
+
+
 local function initComposite(self)
     self._screenT, self._screenF, self._screenB = newRows(
         self._w, self._h, " ", WHITE, BLACK)
@@ -2202,6 +2539,7 @@ local function initComposite(self)
     self._dirty = {}
     for y = 1, self._h do self._dirty[y] = true end
 end
+
 function buffer.new(width, height, targetTerm)
     if type(width) == "table" then
         targetTerm, width, height = width, nil, nil
@@ -2224,22 +2562,27 @@ function buffer.new(width, height, targetTerm)
     initComposite(self)
     return self
 end
+
 function Buffer:_sortLayers()
     table.sort(self._layers, function(a, b)
         if a.zIndex == b.zIndex then return a._sequence < b._sequence end
         return a.zIndex < b.zIndex
     end)
 end
+
 function Buffer:_markFullComposition()
     self._fullComposition = true
     for y = 1, self._h do self._dirty[y] = true end
 end
+
 function Buffer:getSize()
     return self._w, self._h
 end
+
 function Buffer:getVirtualSize()
     return self._w * 2, self._h * 3
 end
+
 function Buffer:setSize(width, height)
     width, height = math.floor(width), math.floor(height)
     if width < 1 or height < 1 then return self end
@@ -2249,9 +2592,11 @@ function Buffer:setSize(width, height)
     self._fullComposition = true
     return self
 end
+
 function Buffer:getTarget()
     return self._term
 end
+
 function Buffer:addLayer(name, zIndex)
     assert(type(name) == "string" and name ~= "", "Buffer:addLayer requires a name")
     if self._layerByName[name] then
@@ -2264,15 +2609,19 @@ function Buffer:addLayer(name, zIndex)
     self:_markFullComposition()
     return layer
 end
+
 Buffer.createLayer = Buffer.addLayer
+
 function Buffer:getLayer(name)
     return self._layerByName[name]
 end
+
 function Buffer:getLayers()
     local result = {}
     for i, layer in ipairs(self._layers) do result[i] = layer end
     return result
 end
+
 function Buffer:removeLayer(layerOrName)
     local layer = type(layerOrName) == "string" and self._layerByName[layerOrName]
         or layerOrName
@@ -2284,17 +2633,21 @@ function Buffer:removeLayer(layerOrName)
     self:_markFullComposition()
     return true
 end
+
 function Buffer:getDefaultLayer()
     return self._default
 end
+
 local function flushPixels(pixels)
     return compileMosaic(pixels[1], pixels[2], pixels[3],
         pixels[4], pixels[5], pixels[6])
 end
+
 function Buffer:_composeCell(x, y)
     local outT, outF, outB = " ", WHITE, BLACK
     local pixels
     local spIndices
+
     for _, layer in ipairs(self._layers) do
         if layer.visible then
             local lt, lf, lb = layer._text[y][x], layer._fg[y][x], layer._bg[y][x]
@@ -2307,6 +2660,7 @@ function Buffer:_composeCell(x, y)
                 if lf ~= nil then outF = lf end
                 if lb ~= nil then outB = lb end
             end
+
             if layer._spBits then
                 if not spIndices then
                     local virtualWidth = self._w * 2
@@ -2343,9 +2697,11 @@ function Buffer:_composeCell(x, y)
             end
         end
     end
+
     if pixels then outT, outF, outB = flushPixels(pixels) end
     return outT, outF, outB
 end
+
 function Buffer:_compose()
     local x1, y1, x2, y2 = math.huge, math.huge, 0, 0
     if self._fullComposition then
@@ -2359,6 +2715,7 @@ function Buffer:_compose()
         end
     end
     if x1 > x2 or y1 > y2 then return false end
+
     x1, y1 = math.max(1, x1), math.max(1, y1)
     x2, y2 = math.min(self._w, x2), math.min(self._h, y2)
     for y = y1, y2 do
@@ -2372,16 +2729,20 @@ function Buffer:_compose()
     self._fullComposition = false
     return true
 end
+
 local function scanColors(row, used)
     for x = 1, #row do used[row:byte(x)] = true end
 end
+
 function Buffer:present()
     self:_compose()
+
     local hasDirty = false
     for y = 1, self._h do
         if self._dirty[y] then hasDirty = true; break end
     end
     if not hasDirty then return self end
+
     local logicalT, logicalF, logicalB = {}, {}, {}
     local used = {}
     for y = 1, self._h do
@@ -2391,6 +2752,7 @@ function Buffer:present()
         scanColors(logicalF[y], used)
         scanColors(logicalB[y], used)
     end
+
     local map, force = self._mapper:build(used)
     for y = 1, self._h do
         if force or self._dirty[y] then
@@ -2405,20 +2767,26 @@ function Buffer:present()
     end
     return self
 end
+
 Buffer.flush = Buffer.present
+
 function Buffer:invalidate()
     self._lastT, self._lastF, self._lastB = {}, {}, {}
     self:_markFullComposition()
     return self
 end
+
+
 function Buffer:restorePalette()
     self._mapper:restore()
     return self
 end
+
 function Buffer:compileSubpixels()
     self:_compose()
     return self
 end
+
 local delegated = {
     "push", "pop", "setClip", "clearClip", "clear",
     "drawText", "drawLine", "drawRect", "drawSprite",
@@ -2431,21 +2799,28 @@ for _, method in ipairs(delegated) do
         return self._default[method](self._default, ...)
     end
 end
+
 buffer.rgb = color.rgb
 buffer.color = color
 buffer.Buffer = Buffer
 buffer.Surface = Surface
+
 return buffer
 ]=]
 paths["core.buffer"] = "core/buffer"
 sources["core.camera"] = [=[
 
+
 local camera = {}
+
 local CameraInstance = {}
 CameraInstance.__index = CameraInstance
+
+
 function camera.new(scene)
     assert(scene and scene.camera, "camera.new: scene must have a .camera vec2")
     local self = setmetatable({}, CameraInstance)
+
     self._scene       = scene
     self._targetX     = scene.camera.x
     self._targetY     = scene.camera.y
@@ -2466,9 +2841,12 @@ function camera.new(scene)
     self._shakeOffsetY     = 0
     self._flashColor       = "0"
     self._flashDuration    = 0
+
     scene._camera = self
     return self
 end
+
+
 function CameraInstance:follow(id, opts)
     opts = opts or {}
     self._followId   = id
@@ -2476,23 +2854,29 @@ function CameraInstance:follow(id, opts)
     if opts.lerp    ~= nil then self.lerpFactor = opts.lerp end
     if opts.deadzone       then self._deadzone  = opts.deadzone end
 end
+
 function CameraInstance:unfollow()
     self._followId = nil
 end
+
 function CameraInstance:setBounds(x1, y1, x2, y2)
     self._boundsX1 = x1
     self._boundsY1 = y1
     self._boundsX2 = x2
     self._boundsY2 = y2
 end
+
 function CameraInstance:clearBounds()
     self._boundsX1, self._boundsY1 = nil, nil
     self._boundsX2, self._boundsY2 = nil, nil
 end
+
 function CameraInstance:setOffset(ox, oy)
     self.offsetX = ox or 0
     self.offsetY = oy or 0
 end
+
+
 function CameraInstance:moveTo(wx, wy)
     self._targetX = wx + self.offsetX
     self._targetY = wy + self.offsetY
@@ -2500,6 +2884,7 @@ function CameraInstance:moveTo(wx, wy)
     self._scene.camera.x = self._targetX
     self._scene.camera.y = self._targetY
 end
+
 function CameraInstance:pan(dx, dy)
     self._targetX = self._targetX + (dx or 0)
     self._targetY = self._targetY + (dy or 0)
@@ -2507,14 +2892,18 @@ function CameraInstance:pan(dx, dy)
     self._scene.camera.x = self._targetX
     self._scene.camera.y = self._targetY
 end
+
+
 function CameraInstance:update(dt)
     local scene = self._scene
+
     if self._followId then
         local comp = scene.components[self._followComp]
         local pos  = comp and comp[self._followId]
         if pos then
             local desiredX = pos.x + self.offsetX
             local desiredY = pos.y + self.offsetY
+
             if self._deadzone then
                 local hw = self._deadzone.w * 0.5
                 local hh = self._deadzone.h * 0.5
@@ -2536,10 +2925,13 @@ function CameraInstance:update(dt)
             end
         end
     end
+
     self:_applyBounds()
+
     local f = math.min(1, self.lerpFactor * (dt * 60))
     scene.camera.x = scene.camera.x + (self._targetX - scene.camera.x) * f
     scene.camera.y = scene.camera.y + (self._targetY - scene.camera.y) * f
+
     if self._shakeDuration > 0 then
         self._shakeDuration = self._shakeDuration - dt
         if self._shakeDuration <= 0 then
@@ -2554,31 +2946,41 @@ function CameraInstance:update(dt)
             self._shakeOffsetY = (math.random() - 0.5) * 2 * intensity
         end
     end
+
     if self._flashDuration > 0 then
         self._flashDuration = self._flashDuration - dt
     end
 end
+
+
 function CameraInstance:shake(intensity, duration)
     self._shakeIntensity   = intensity or 1
     self._shakeDuration    = duration  or 0.5
     self._shakeDurationMax = self._shakeDuration
 end
+
 function CameraInstance:flash(color, duration)
     self._flashColor    = color    or "0"
     self._flashDuration = duration or 0.2
 end
+
 function CameraInstance:isShaking()
     return self._shakeDuration > 0
 end
+
 function CameraInstance:getShakeOffset()
     return self._shakeOffsetX, self._shakeOffsetY
 end
+
 function CameraInstance:isFlashing()
     return self._flashDuration > 0
 end
+
 function CameraInstance:getFlashColor()
     return self._flashColor
 end
+
+
 function CameraInstance:worldToScreen(wx, wy)
     local scene = self._scene
     local termW, termH
@@ -2597,6 +2999,7 @@ function CameraInstance:worldToScreen(wx, wy)
     local sy = math.floor(wy - scene.camera.y + offsetY) + 1
     return sx, sy
 end
+
 function CameraInstance:screenToWorld(sx, sy)
     local scene = self._scene
     local termW, termH
@@ -2615,9 +3018,12 @@ function CameraInstance:screenToWorld(sx, sy)
     local wy = (sy - 1) + scene.camera.y - offsetY
     return wx, wy
 end
+
 function CameraInstance:getPosition()
     return self._scene.camera.x, self._scene.camera.y
 end
+
+
 function CameraInstance:_applyBounds()
     if self._boundsX1 ~= nil and self._targetX < self._boundsX1 then
         self._targetX = self._boundsX1
@@ -2632,20 +3038,26 @@ function CameraInstance:_applyBounds()
         self._targetY = self._boundsY2
     end
 end
+
 return camera
 ]=]
 paths["core.camera"] = "core/camera"
 sources["core.color"] = [=[
 
+
+
 local color = {}
+
 local floor = math.floor
 local char = string.char
+
 local NATIVE_HEX = {
     [0] = 0xF0F0F0, 0xF2B233, 0xE57FD8, 0x99B2F2,
     0xDEDE6C, 0x7FCC19, 0xF2B2CC, 0x4C4C4C,
     0x999999, 0x4C99B2, 0xB266E5, 0x3366CC,
     0x7F664C, 0x57A64E, 0xCC4C4C, 0x111111,
 }
+
 local HEX = {}
 local HEX_TO_INDEX = {}
 local NATIVE_VALUE_TO_INDEX = {}
@@ -2656,22 +3068,28 @@ for i = 0, 15 do
     HEX_TO_INDEX[h:upper()] = i
     NATIVE_VALUE_TO_INDEX[2 ^ i] = i
 end
+
 local function hexToRGB(n)
     return floor(n / 65536) / 255,
         floor(n / 256) % 256 / 255,
         (n % 256) / 255
 end
+
 local registry = {}
 for i = 0, 15 do registry[i] = { hexToRGB(NATIVE_HEX[i]) } end
+
 local nextIndex = 16
 local dedupe = {}
 local HANDLE_BASE = 0x1000000
+
 for i = 0, 15 do dedupe[NATIVE_HEX[i]] = i end
+
 local function clamp01(v)
     if v < 0 then return 0 end
     if v > 1 then return 1 end
     return v
 end
+
 local function parseRGB(r, g, b)
     if type(r) == "string" then
         local value = r:gsub("#", "")
@@ -2687,9 +3105,11 @@ local function parseRGB(r, g, b)
         end
         return hexToRGB(tonumber(value, 16))
     end
+
     if type(r) ~= "number" then
         error("Obsidian: invalid color value " .. tostring(r), 3)
     end
+
     if g == nil then
         if r < 0 or r > 0xFFFFFF or r % 1 ~= 0 then
             error("Obsidian: invalid RGB number " .. tostring(r)
@@ -2697,6 +3117,7 @@ local function parseRGB(r, g, b)
         end
         return hexToRGB(r)
     end
+
     if type(g) ~= "number" or type(b) ~= "number" then
         error("Obsidian: rgb requires three numeric components", 3)
     end
@@ -2705,6 +3126,7 @@ local function parseRGB(r, g, b)
     end
     return clamp01(r), clamp01(g), clamp01(b)
 end
+
 local function registerRGB(r, g, b)
     local rr, gg, bb = parseRGB(r, g, b)
     local key = floor(rr * 255 + 0.5) * 65536
@@ -2728,17 +3150,21 @@ local function registerRGB(r, g, b)
     dedupe[key] = idx
     return idx
 end
+
 function color.rgb(r, g, b)
     return HANDLE_BASE + registerRGB(r, g, b)
 end
+
 local function indexOf(value)
     if value == nil or value == false or value == " " then return nil end
+
     if type(value) == "string" then
         if #value == 1 and HEX_TO_INDEX[value] ~= nil then
             return HEX_TO_INDEX[value]
         end
         return registerRGB(value)
     end
+
     if type(value) == "number" then
         if value >= HANDLE_BASE then
             local idx = value - HANDLE_BASE
@@ -2749,27 +3175,35 @@ local function indexOf(value)
         if native ~= nil then return native end
         return registerRGB(value)
     end
+
     error("Obsidian: unsupported color value " .. tostring(value), 3)
 end
+
 function color.encode(value, default)
     if value == nil then value = default end
     local idx = indexOf(value)
     return idx ~= nil and char(idx) or nil
 end
+
 function color.indexOf(value)
     return indexOf(value)
 end
+
 function color.getRGB(index)
     return registry[index]
 end
+
 color.identityMap = {}
 for i = 0, 15 do color.identityMap[char(i)] = HEX[i] end
+
 local Mapper = {}
 Mapper.__index = Mapper
+
 local function rgbDistance(a, b)
     local dr, dg, db = a[1] - b[1], a[2] - b[2], a[3] - b[3]
     return dr * dr + dg * dg + db * db
 end
+
 local function readPalette(t, index)
     local getter = t.getPaletteColour or t.getPaletteColor
     if getter then
@@ -2778,6 +3212,7 @@ local function readPalette(t, index)
     end
     return { hexToRGB(NATIVE_HEX[index]) }
 end
+
 function color.newMapper(t)
     local native = {}
     for i = 0, 15 do native[i] = readPalette(t, i) end
@@ -2789,6 +3224,7 @@ function color.newMapper(t)
         previousMap = {},
     }, Mapper)
 end
+
 local function setPalette(mapper, slot, rgb, registryIndex)
     local setter = mapper.term.setPaletteColour or mapper.term.setPaletteColor
     if not setter then return end
@@ -2796,9 +3232,11 @@ local function setPalette(mapper, slot, rgb, registryIndex)
     setter(2 ^ slot, rgb[1], rgb[2], rgb[3])
     mapper.overridden[slot] = registryIndex
 end
+
 function Mapper:build(used)
     local setter = self.term.setPaletteColour or self.term.setPaletteColor
     local map, occupant = {}, {}
+
     for i = 0, 15 do
         map[char(i)] = HEX[i]
         if used[i] then
@@ -2809,11 +3247,13 @@ function Mapper:build(used)
             end
         end
     end
+
     local custom = {}
     for idx in pairs(used) do
         if idx > 15 then custom[#custom + 1] = idx end
     end
     table.sort(custom)
+
     local leftovers = {}
     if setter then
         local function assign(idx, slot)
@@ -2822,6 +3262,7 @@ function Mapper:build(used)
             setPalette(self, slot, registry[idx], idx)
             map[char(idx)] = HEX[slot]
         end
+
         local pending = {}
         for _, idx in ipairs(custom) do
             local slot = self.previousSlot[idx]
@@ -2831,6 +3272,7 @@ function Mapper:build(used)
                 pending[#pending + 1] = idx
             end
         end
+
         local nextSlot = 0
         for _, idx in ipairs(pending) do
             while nextSlot <= 15 and occupant[nextSlot] ~= nil do
@@ -2847,6 +3289,7 @@ function Mapper:build(used)
         for i = 0, 15 do occupant[i] = i end
         leftovers = custom
     end
+
     for _, idx in ipairs(leftovers) do
         local bestSlot, bestDistance = 15, math.huge
         for slot = 0, 15 do
@@ -2862,6 +3305,7 @@ function Mapper:build(used)
         end
         map[char(idx)] = HEX[bestSlot]
     end
+
     local force = false
     for byte, slot in pairs(map) do
         local previous = self.previousMap[byte]
@@ -2873,6 +3317,7 @@ function Mapper:build(used)
     self.previousMap = map
     return map, force
 end
+
 function Mapper:restore()
     local setter = self.term.setPaletteColour or self.term.setPaletteColor
     if setter then
@@ -2883,15 +3328,22 @@ function Mapper:restore()
     end
     self.overridden, self.previousSlot, self.previousMap = {}, {}, {}
 end
+
 return color
 ]=]
 paths["core.color"] = "core/color"
 sources["core.console"] = [=[
 
+
+
+
+
 local Console = {}
+
 local HEIGHT = 10
 local PROMPT = "> "
 local MAX_HIST = 300
+
 local state = {
     open    = false,
     input   = "",
@@ -2902,25 +3354,32 @@ local state = {
     env     = nil,
     commands = {},
 }
+
+
 function Console.isOpen()
     return state.open
 end
+
 function Console.open()
     state.open   = true
     state.scroll = 0
 end
+
 function Console.close()
     state.open   = false
     state.input  = ""
     state.cmdIdx = 0
     state.scroll = 0
 end
+
 function Console.toggle()
     if state.open then Console.close() else Console.open() end
 end
+
 function Console.setEnv(env)
     state.env = env
 end
+
 local function wrapText(text, maxW)
     local lines = {}
     for para in (tostring(text) .. "\n"):gmatch("([^\n]*)\n") do
@@ -2955,7 +3414,9 @@ local function wrapText(text, maxW)
     end
     return lines
 end
+
 local currentWrapWidth = 48
+
 function Console.addLine(text, fg)
     local lines = wrapText(tostring(text), currentWrapWidth - 2)
     for _, line in ipairs(lines) do
@@ -2965,22 +3426,30 @@ function Console.addLine(text, fg)
         table.remove(state.history, 1)
     end
 end
+
+
 function Console.print(text)
     Console.addLine(tostring(text), "b")
 end
+
+
 function Console.addCommand(name, fn, description)
     state.commands[name] = { fn = fn, desc = description or "" }
 end
+
 function Console.removeCommand(name)
     state.commands[name] = nil
 end
+
 function Console.exec(cmd)
     if cmd == "" then return end
+
     if state.cmdHist[#state.cmdHist] ~= cmd then
         table.insert(state.cmdHist, cmd)
     end
     state.cmdIdx = 0
     state.scroll = 0
+
     Console.addLine(PROMPT .. cmd, "7")
     if cmd == "help" then
         Console.addLine("  Registered commands:", "7")
@@ -2994,6 +3463,7 @@ function Console.exec(cmd)
         if not found then Console.addLine("  (none registered)", "8") end
         return
     end
+
     local cmdName, rest = cmd:match("^(%S+)(.*)$")
     if cmdName and state.commands[cmdName] then
         local args = {}
@@ -3009,15 +3479,19 @@ function Console.exec(cmd)
         end
         return
     end
+
     local env = state.env or _ENV
+
     local chunk, err = load("return " .. cmd, "console", "t", env)
     if not chunk then
         chunk, err = load(cmd, "console", "t", env)
     end
+
     if not chunk then
         Console.addLine("  " .. tostring(err), "e")
         return
     end
+
     local results = table.pack(pcall(chunk))
     local ok = results[1]
     if not ok then
@@ -3030,8 +3504,11 @@ function Console.exec(cmd)
         Console.addLine("  = " .. table.concat(parts, ", "), "5")
     end
 end
+
+
 function Console.handleEvent(event, consumed)
     local etype = event[1]
+
     if not state.open then
         if not consumed and etype == "key" and event[2] == keys.f1 then
             Console.open()
@@ -3039,9 +3516,12 @@ function Console.handleEvent(event, consumed)
         end
         return false
     end
+
     if etype == "term_resize" then return false end
+
     if etype == "char" then
         state.input = state.input .. event[2]
+
     elseif etype == "key" then
         local k = event[2]
         if k == keys.f1 then
@@ -3073,54 +3553,72 @@ function Console.handleEvent(event, consumed)
         elseif k == keys.pageDown then
             state.scroll = math.max(0, state.scroll - math.floor((HEIGHT - 3) / 2))
         end
+
     elseif etype == "mouse_scroll" then
         state.scroll = state.scroll - event[2]
         local maxOut = HEIGHT - 3
         state.scroll = math.max(0, math.min(state.scroll, math.max(0, #state.history - maxOut)))
     end
+
     return true
 end
+
+
 function Console.draw(buf)
     if not state.open then return end
+
     local w, h = buf:getSize()
     local top  = h - HEIGHT + 1
     currentWrapWidth = w
+
     buf:drawRect(1, top, w, HEIGHT, " ", "f", "8")
+
     buf:drawRect(1, top, w, 1, " ", "0", "7")
     local title = " Obsidian Console   F1 toggle  PgUp/PgDn scroll"
     buf:drawText(1, top, title:sub(1, w), "0", "7")
+
     local maxOut   = HEIGHT - 3
     local total    = #state.history
     local startIdx = math.max(1, total - maxOut + 1 - state.scroll)
     local endIdx   = math.min(total, startIdx + maxOut - 1)
+
     local row = top + 1
     for i = startIdx, endIdx do
         local line = state.history[i]
         buf:drawText(2, row, line.text, line.fg, "8")
         row = row + 1
     end
+
     if state.scroll > 0 then
         local indicator = string.format(" ^%d ", state.scroll)
         buf:drawText(w - #indicator, top + 1, indicator, "5", "8")
     end
+
     local sepRow = top + HEIGHT - 2
     buf:drawRect(1, sepRow, w, 1, string.rep("\140", w), "7", "8")
+
     local inputRow  = top + HEIGHT - 1
     local available = w - #PROMPT - 1
     local display   = PROMPT .. state.input:sub(-available)
     buf:drawRect(1, inputRow, w, 1, " ", "f", "0")
     buf:drawText(1, inputRow, display:sub(1, w), "f", "0")
 end
+
 return Console
 ]=]
 paths["core.console"] = "core/console"
 sources["core.db"] = [=[
 
+
 local require = ...
+
 local logger  = require("core.logger")
+
 local DatabaseModule = {}
+
 local Collection = {}
 Collection.__index = Collection
+
 local function _matches(record, filter)
     for k, v in pairs(filter) do
         local rv = record[k]
@@ -3132,6 +3630,7 @@ local function _matches(record, filter)
     end
     return true
 end
+
 local function _copy(t)
     if type(t) ~= "table" then return t end
     local out = {}
@@ -3140,6 +3639,7 @@ local function _copy(t)
     end
     return out
 end
+
 function DatabaseModule.open(name, opts)
     opts = opts or {}
     local self = setmetatable({}, Collection)
@@ -3148,6 +3648,7 @@ function DatabaseModule.open(name, opts)
     self._autosave = (opts.autosave ~= false)
     self._records = {}
     self._nextId = 1
+
     local path = fs.combine(self._dir, name .. ".dat")
     if fs.exists(path) then
         local file = fs.open(path, "r")
@@ -3163,8 +3664,11 @@ function DatabaseModule.open(name, opts)
             end
         end
     end
+
     return self
 end
+
+
 function Collection:insert(record)
     local r = _copy(record)
     if r._id == nil then
@@ -3179,6 +3683,7 @@ function Collection:insert(record)
     if self._autosave then self:flush() end
     return _copy(r)
 end
+
 function Collection:insertMany(list)
     local out = {}
     for _, rec in ipairs(list) do
@@ -3186,6 +3691,7 @@ function Collection:insertMany(list)
     end
     return out
 end
+
 function Collection:update(filter, patch)
     local count = 0
     for _, rec in ipairs(self._records) do
@@ -3201,6 +3707,7 @@ function Collection:update(filter, patch)
     if count > 0 and self._autosave then self:flush() end
     return count
 end
+
 function Collection:upsert(filter, data)
     local existing = self:findOne(filter)
     if existing then
@@ -3211,6 +3718,7 @@ function Collection:upsert(filter, data)
         return "inserted"
     end
 end
+
 function Collection:delete(filter)
     local kept  = {}
     local count = 0
@@ -3225,6 +3733,7 @@ function Collection:delete(filter)
     if count > 0 and self._autosave then self:flush() end
     return count
 end
+
 function Collection:clear()
     local count = #self._records
     self._records = {}
@@ -3232,14 +3741,18 @@ function Collection:clear()
     if self._autosave then self:flush() end
     return count
 end
+
+
 function Collection:find(filter, opts)
     opts = opts or {}
     local results = {}
+
     for _, rec in ipairs(self._records) do
         if not filter or _matches(rec, filter) then
             results[#results + 1] = _copy(rec)
         end
     end
+
     if opts.orderBy then
         local field = opts.orderBy
         local desc  = opts.desc == true
@@ -3250,6 +3763,7 @@ function Collection:find(filter, opts)
             if desc then return av > bv else return av < bv end
         end)
     end
+
     if opts.offset or opts.limit then
         local start = (opts.offset or 0) + 1
         local stop  = opts.limit and (start + opts.limit - 1) or #results
@@ -3259,8 +3773,10 @@ function Collection:find(filter, opts)
         end
         return sliced
     end
+
     return results
 end
+
 function Collection:findOne(filter)
     for _, rec in ipairs(self._records) do
         if not filter or _matches(rec, filter) then
@@ -3269,9 +3785,11 @@ function Collection:findOne(filter)
     end
     return nil
 end
+
 function Collection:findById(id)
     return self:findOne({ _id = id })
 end
+
 function Collection:count(filter)
     if not filter then return #self._records end
     local n = 0
@@ -3280,6 +3798,8 @@ function Collection:count(filter)
     end
     return n
 end
+
+
 function Collection:flush()
     if not fs.exists(self._dir) then fs.makeDir(self._dir) end
     local path = fs.combine(self._dir, self._name .. ".dat")
@@ -3297,18 +3817,22 @@ function Collection:flush()
     end
     return ok
 end
+
 function Collection:drop()
     self:clear()
     local path = fs.combine(self._dir, self._name .. ".dat")
     if fs.exists(path) then fs.delete(path) end
     logger.info("DB: Dropped collection '" .. self._name .. "'")
 end
+
 function Collection:disableAutosave()
     self._autosave = false
 end
+
 function Collection:enableAutosave()
     self._autosave = true
 end
+
 return DatabaseModule
 ]=]
 paths["core.db"] = "core/db"
@@ -3332,8 +3856,10 @@ return {
 paths["core.debug"] = "core/debug"
 sources["core.ecs"] = [=[
 
+
 local World = {}
 World.__index = World
+
 function World.new()
     local self = setmetatable({}, World)
     self._nextId = 1
@@ -3343,6 +3869,8 @@ function World.new()
     self._index = {}
     return self
 end
+
+
 function World:spawn()
     local id = self._nextId
     self._nextId = id + 1
@@ -3350,20 +3878,25 @@ function World:spawn()
     self._tags[id] = {}
     return id
 end
+
 function World:alive(id)
     return self._entities[id] == true
 end
+
 function World:despawn(id)
     if not self:alive(id) then
         logger.warn("ECS: Attempted to despawn non-existent entity " .. tostring(id))
         return
     end
+
     for component in pairs(self._tags[id] or {}) do
         self:detach(id, component)
     end
+
     self._entities[id] = nil
     self._tags[id] = nil
 end
+
 function World:entities()
     local result = {}
     for id in pairs(self._entities) do
@@ -3371,6 +3904,7 @@ function World:entities()
     end
     return result
 end
+
 function World:count()
     local n = 0
     for _ in pairs(self._entities) do
@@ -3378,6 +3912,8 @@ function World:count()
     end
     return n
 end
+
+
 function World:attach(id, component, data)
     if id == nil then
         logger.error("ECS: attach() called with nil entity (component='" .. tostring(component) .. "')")
@@ -3391,24 +3927,30 @@ function World:attach(id, component, data)
         logger.error("ECS: attach() called on dead entity " .. tostring(id))
         return
     end
+
     if not self._store[component] then
         self._store[component] = {}
         self._index[component] = {}
     end
+
     self._store[component][id] = data
     self._tags[id][component] = true
     self._index[component][id] = true
 end
+
 function World:get(id, component)
     if not self:alive(id) then
         return nil
     end
+
     local storage = self._store[component]
     return storage and storage[id]
 end
+
 function World:has(id, component)
     return self._tags[id] ~= nil and self._tags[id][component] == true
 end
+
 function World:detach(id, component)
     if not self:alive(id) then
         return
@@ -3423,16 +3965,19 @@ function World:detach(id, component)
         self._index[component][id] = nil
     end
 end
+
 function World:components(id)
     if not self:alive(id) then
         return {}
     end
+
     local result = {}
     for component in pairs(self._tags[id] or {}) do
         result[component] = self:get(id, component)
     end
     return result
 end
+
 function World:update(id, component, fn)
     local current = self:get(id, component)
     if current then
@@ -3442,47 +3987,63 @@ function World:update(id, component, fn)
         end
     end
 end
+
+
 function World:select(...)
     local components = {...}
+
     if #components == 0 then
         return self:entities()
     end
+
     local smallest = components[1]
     local smallestSize = math.huge
+
     for _, comp in ipairs(components) do
         local index = self._index[comp]
         if not index then
             return {}
         end
+
         local size = self:countType(comp)
+
         if size < smallestSize then
             smallestSize = size
             smallest = comp
         end
     end
+
     local source = self._index[smallest]
     local results = {}
+
     for id in pairs(source) do
         local match = true
         local tags = self._tags[id]
+
         for _, comp in ipairs(components) do
             if not tags[comp] then
                 match = false
                 break
             end
         end
+
         if match then
             table.insert(results, id)
         end
     end
+
     return results
 end
+
 function World:selectAny(...)
     local components = {...}
+
     if #components == 0 then
         return {}
     end
+
     local resultSet = {}
+
     for _, comp in ipairs(components) do
         local index = self._index[comp]
         if index then
@@ -3491,57 +4052,74 @@ function World:selectAny(...)
             end
         end
     end
+
     local results = {}
     for id in pairs(resultSet) do
         table.insert(results, id)
     end
+
     return results
 end
+
 function World:exclude(...)
     local components = {...}
     local results = {}
+
     for id in pairs(self._entities) do
         local hasAny = false
         local tags = self._tags[id]
+
         for _, comp in ipairs(components) do
             if tags[comp] then
                 hasAny = true
                 break
             end
         end
+
         if not hasAny then
             table.insert(results, id)
         end
     end
+
     return results
 end
+
 function World:first(...)
     local results = self:select(...)
     return results[1]
 end
+
 function World:each(...)
     local components = {...}
     local entities = self:select(...)
     local i = 0
+
     return function()
         i = i + 1
         local id = entities[i]
         if not id then return nil end
+
         local values = {}
         for _, comp in ipairs(components) do
             table.insert(values, self:get(id, comp))
         end
+
         return id, table.unpack(values)
     end
 end
+
+
 function World:forEach(fn, ...)
     for id in self:each(...) do
         fn(id)
     end
 end
+
 function World:countWith(...)
     return #self:select(...)
 end
+
+
 function World:types()
     local result = {}
     for name in pairs(self._store) do
@@ -3549,15 +4127,19 @@ function World:types()
     end
     return result
 end
+
 function World:countType(component)
     local index = self._index[component]
     if not index then return 0 end
+
     local n = 0
     for _ in pairs(index) do
         n = n + 1
     end
     return n
 end
+
+
 function World:stats()
     local componentCounts = {}
     for comp, index in pairs(self._index) do
@@ -3567,28 +4149,34 @@ function World:stats()
         end
         componentCounts[comp] = count
     end
+
     return {
         entities = self:count(),
         types = #self:types(),
         components = componentCounts,
     }
 end
+
 function World:clear()
     self._nextId = 1
     self._entities = {}
     self._tags = {}
+
     for comp in pairs(self._store) do
         self._store[comp] = {}
         self._index[comp] = {}
     end
 end
+
 function World:debug()
     logger.info("=== ECS World Debug ===")
     logger.info("Entities: " .. self:count())
     logger.info("Component Types: " .. #self:types())
+
     for _, comp in ipairs(self:types()) do
         logger.info("  - " .. comp .. ": " .. self:countType(comp) .. " instances")
     end
+
     for id in pairs(self._entities) do
         local comps = {}
         for comp in pairs(self._tags[id]) do
@@ -3597,38 +4185,51 @@ function World:debug()
         logger.info("Entity " .. id .. ": [" .. table.concat(comps, ", ") .. "]")
     end
 end
+
+
 local ECS = {}
+
 function ECS.createWorld()
     return World.new()
 end
+
 function ECS.new()
     return World.new()
 end
+
 return ECS
 ]=]
 paths["core.ecs"] = "core/ecs"
 sources["core.error"] = [=[
 
+
 local require = ...
+
 local logger = require("core.logger")
+
 local Error = {
     handler = nil,
     _shouldStop = false
 }
+
 local function writeLog(msg)
     logger.error("[PANIC] " .. tostring(msg))
 end
+
 local function drawPanic(msg)
     writeLog(msg)
+
     local mainMsg, trace = msg, nil
     local splitPos = msg:find("\nstack traceback:")
     if splitPos then
         mainMsg = msg:sub(1, splitPos - 1)
         trace   = msg:sub(splitPos + 1)
     end
+
     local w, h = term.getSize()
     term.setBackgroundColor(colors.black)
     term.clear()
+
     term.setBackgroundColor(colors.red)
     term.setCursorPos(1, 1)
     term.clearLine()
@@ -3637,6 +4238,7 @@ local function drawPanic(msg)
     term.setTextColor(colors.white)
     term.write(title)
     term.setBackgroundColor(colors.black)
+
     local y = 3
     term.setTextColor(colors.yellow)
     for line in mainMsg:gmatch("[^\n]+") do
@@ -3645,6 +4247,7 @@ local function drawPanic(msg)
         term.write(line:sub(1, w - 2))
         y = y + 1
     end
+
     if trace and y < h - 2 then
         y = y + 1
         if y <= h - 2 then
@@ -3667,6 +4270,7 @@ local function drawPanic(msg)
             end
         end
     end
+
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.white)
     term.setCursorPos(1, h)
@@ -3674,8 +4278,11 @@ local function drawPanic(msg)
     local footer = " Press any key to exit  |  crash saved to obsidian.log "
     term.setCursorPos(math.max(1, math.floor((w - #footer) / 2) + 1), h)
     term.write(footer:sub(1, w))
+
     os.pullEvent("key")
 end
+
+
 function Error.report(msg, trace)
     local fullMsg
     if trace and #tostring(trace) > 0 then
@@ -3683,25 +4290,32 @@ function Error.report(msg, trace)
     else
         fullMsg = tostring(msg)
     end
+
     if Error.handler then
         Error.handler(fullMsg)
     else
         drawPanic(fullMsg)
     end
+
     Error._shouldStop = true
 end
+
 return Error
 ]=]
 paths["core.error"] = "core/error"
 sources["core.event"] = [=[
 
+
 local require = ...
 local logger = require("core.logger")
+
 local EventEmitter = {}
 EventEmitter.__index = EventEmitter
+
 function EventEmitter.new()
     return setmetatable({ _listeners = {} }, EventEmitter)
 end
+
 function EventEmitter:on(name, fn)
     if not self._listeners[name] then
         self._listeners[name] = {}
@@ -3713,6 +4327,7 @@ function EventEmitter:on(name, fn)
         if bucket then bucket[id] = nil end
     end
 end
+
 function EventEmitter:once(name, fn)
     local unsub
     unsub = self:on(name, function(...)
@@ -3721,6 +4336,7 @@ function EventEmitter:once(name, fn)
     end)
     return unsub
 end
+
 function EventEmitter:emit(name, ...)
     local bucket = self._listeners[name]
     if not bucket then return end
@@ -3731,16 +4347,21 @@ function EventEmitter:emit(name, ...)
         end
     end
 end
+
 function EventEmitter:off(name)
     self._listeners[name] = nil
 end
+
 function EventEmitter:clear()
     self._listeners = {}
 end
+
 return EventEmitter
 ]=]
 paths["core.event"] = "core/event"
 sources["core.input"] = [=[
+
+
 
 local input = {
     keysDown         = {},
@@ -3755,10 +4376,12 @@ local input = {
     _defaultRepeatDelay = 0.4,
     _defaultRepeatInterval = 0.12,
 }
+
 function input.processEvent(event, ...)
     local p1, p2, p3 = ...
     if event == "key" then
         input.keysDown[p1] = true
+
         if input.isJustPressed(p1) then
             local hooks = input._keyHooks[p1]
             if hooks then
@@ -3786,6 +4409,7 @@ function input.processEvent(event, ...)
                 end
             end
         end
+
         for _, combo in ipairs(input._comboHooks) do
             local allDown = true
             for _, k in ipairs(combo.keys) do
@@ -3803,6 +4427,7 @@ function input.processEvent(event, ...)
                 if k == p1 then combo._fired = false; break end
             end
         end
+
         local hooks = input._keyHooks[p1]
         if hooks then
             for _, h in ipairs(hooks) do
@@ -3818,6 +4443,7 @@ function input.processEvent(event, ...)
         input.mouseDown[p1] = false
         input.mouseX = p2
         input.mouseY = p3
+
     elseif event == "mouse_scroll" then
         input.mouseX = p2
         input.mouseY = p3
@@ -3826,6 +4452,7 @@ function input.processEvent(event, ...)
         input.mouseY = p2
     end
 end
+
 function input._endFrame()
     local now = os.clock()
     for k, hooks in pairs(input._keyHooks) do
@@ -3847,40 +4474,50 @@ function input._endFrame()
         if not input.mouseDown[k] then input.mouseDownPrevious[k] = nil end
     end
 end
+
 function input.clear()
     input.keysDown = {}
     input.keysDownPrevious = {}
     input.mouseDown = {}
     input.mouseDownPrevious = {}
 end
+
 function input.isKeyDown(key)
     if type(key) == "string" then key = keys[key] end
     return input.keysDown[key] == true
 end
+
 function input.isJustPressed(key)
     if type(key) == "string" then key = keys[key] end
     return input.keysDown[key] == true and not (input.keysDownPrevious[key] == true)
 end
+
 function input.isJustReleased(key)
     if type(key) == "string" then key = keys[key] end
     return not (input.keysDown[key] == true) and input.keysDownPrevious[key] == true
 end
+
 function input.isMouseDown(button)
     return input.mouseDown[button] == true
 end
+
 function input.isMouseJustPressed(button)
     return input.mouseDown[button] == true and not (input.mouseDownPrevious[button] == true)
 end
+
 function input.isMouseJustReleased(button)
     return not (input.mouseDown[button] == true) and input.mouseDownPrevious[button] == true
 end
+
 function input.getMousePos()
     return input.mouseX, input.mouseY
 end
+
 local function _normalizeKey(k)
     if type(k) == "string" then return keys[k] end
     return k
 end
+
 function input.onKey(key, handler, opts)
     opts = opts or {}
     input._nextHookId = input._nextHookId + 1
@@ -3902,6 +4539,7 @@ function input.onKey(key, handler, opts)
     end
     return id
 end
+
 function input.offKey(id)
     for k, list in pairs(input._keyHooks) do
         for i = #list, 1, -1 do
@@ -3910,6 +4548,7 @@ function input.offKey(id)
         if #list == 0 then input._keyHooks[k] = nil end
     end
 end
+
 function input.onCombo(keys, handler, opts)
     opts = opts or {}
     input._nextHookId = input._nextHookId + 1
@@ -3923,38 +4562,48 @@ function input.onCombo(keys, handler, opts)
     table.insert(input._comboHooks, { id = id, keys = normalized, handler = handler, opts = opts, _fired = false })
     return id
 end
+
 function input.offCombo(id)
     for i = #input._comboHooks, 1, -1 do
         if input._comboHooks[i].id == id then table.remove(input._comboHooks, i) end
     end
 end
+
 function input.clearHooks()
     input._keyHooks = {}
     input._comboHooks = {}
     input._nextHookId = 0
 end
+
 return input
 ]=]
 paths["core.input"] = "core/input"
 sources["core.input_mapper"] = [=[
 
+
 local require = ...
+
 local input = require("core.input")
+
 local InputMapper = {
     mappings = {}
 }
+
 function InputMapper.bind(actionName, keysTable)
     if type(keysTable) ~= "table" then keysTable = {keysTable} end
     InputMapper.mappings[actionName] = keysTable
 end
+
 function InputMapper.isActive(actionName)
     local keysToCheck = InputMapper.mappings[actionName]
     if not keysToCheck then return false end
+
     for _, key in ipairs(keysToCheck) do
         if input.isKeyDown(key) then return true end
     end
     return false
 end
+
 function InputMapper.loadDefaultWASD()
     InputMapper.bind("up",    {keys.w, keys.up})
     InputMapper.bind("down",  {keys.s, keys.down})
@@ -3963,14 +4612,23 @@ function InputMapper.loadDefaultWASD()
     InputMapper.bind("jump",  {keys.space})
     InputMapper.bind("use",   {keys.e, keys.enter})
 end
+
 return InputMapper
 ]=]
 paths["core.input_mapper"] = "core/input_mapper"
 sources["core.loader"] = [=[
 
+
 local require = ...
+
+
 local logger = require("core.logger")
 local flimg = require("flimg")
+
+
+
+
+
 local loader = {
     basePath = nil,
     spriteCache = {},
@@ -3978,14 +4636,18 @@ local loader = {
     uiCache = {},
     emitterCache = {}
 }
+
 loader.flimg = flimg
+
 local function resolvePath(path)
     if not path then return path, "no path" end
     if path:sub(1, 1) == "/" then return path, "absolute path" end
+
     if loader.basePath then
         return fs.combine(loader.basePath, path),
             "basePath '" .. tostring(loader.basePath) .. "'"
     end
+
     if shell and shell.getRunningProgram then
         local runningProg = shell.getRunningProgram()
         if runningProg and runningProg ~= "" then
@@ -3993,16 +4655,20 @@ local function resolvePath(path)
                 "directory of " .. runningProg
         end
     end
+
     return path, "unchanged (no basePath, and no shell to resolve against)"
 end
+
 function loader.setBasePath(path)
     loader.basePath = path
 end
+
 local function toTable(str)
     local t = {}
     for i = 1, #str do t[i] = str:sub(i, i) end
     return t
 end
+
 local function _loadFile(path)
     local fullPath, origin = resolvePath(path)
     if not fs.exists(fullPath) then
@@ -4021,6 +4687,7 @@ local function _loadFile(path)
     end
     return true, data, fullPath
 end
+
 function loader._processSprite(data)
     if not data then return end
     for i = 1, (data.frameCount or #data) do
@@ -4038,29 +4705,35 @@ function loader._processSprite(data)
         end
     end
 end
+
 function loader._validateSprite(path, data)
     if not data or type(data) ~= "table" then
         return false, "File is not a valid table."
     end
+
     local req = {"width", "height", "frameCount"}
     for _, field in ipairs(req) do
         if not data[field] then return false, "Missing field: " .. field end
     end
+
     for f = 1, data.frameCount do
         local frame = data[f]
         if not frame or #frame ~= 3 then
             return false, string.format("Frame %d must have exactly 3 layers (Chars, Fore, Back).", f)
         end
+
         for layer = 1, 3 do
             if #frame[layer] ~= data.height then
                 return false, string.format("Frame %d, layer %d: row count (%d) does not match height (%d).", f, layer, #frame[layer], data.height)
             end
+
             for r = 1, data.height do
                 local row = frame[layer][r]
                 local len = #row
                 if len ~= data.width then
                     return false, string.format("Frame %d, layer %d, row %d: length (%d) does not match width (%d).", f, layer, r, len, data.width)
                 end
+
                 if type(row) == "table" then
                     for c = 1, data.width do
                         local cell = row[c]
@@ -4089,27 +4762,32 @@ function loader._validateSprite(path, data)
     end
     return true
 end
+
 function loader.loadSprite(path)
     local fullPath = resolvePath(path)
     if loader.spriteCache[fullPath] then
         return loader.spriteCache[fullPath]
     end
+
     local ok, data, fp = _loadFile(path)
     if not ok then
         logger.error("Loader: " .. data)
         return nil, data
     end
+
     local valid, verr = loader._validateSprite(path, data)
     if not valid then
         logger.error("Loader: Validation error in " .. path .. ": " .. verr)
         return nil, verr
     end
+
     loader._processSprite(data)
     data.path = path
     loader.spriteCache[fp] = data
     logger.info("Loader: Cached sprite: " .. fp)
     return data
 end
+
 function loader.loadImage(path)
     local fullPath, origin = resolvePath(path)
     if loader.imageCache[fullPath] then return loader.imageCache[fullPath] end
@@ -4131,33 +4809,40 @@ function loader.loadImage(path)
     logger.info("Loader: Cached FLIMG image: " .. fullPath)
     return image
 end
+
 function loader.loadUI(path)
     local fullPath = resolvePath(path)
     if loader.uiCache[fullPath] then
         return loader.uiCache[fullPath]
     end
+
     local ok, data, fp = _loadFile(path)
     if not ok then
         logger.error("Loader: " .. data)
         return nil, data
     end
+
     loader.uiCache[fp] = data
     return data
 end
+
 function loader.loadEmitter(path)
     local fullPath = resolvePath(path)
     if loader.emitterCache[fullPath] then
         return loader.emitterCache[fullPath]
     end
+
     local ok, data, fp = _loadFile(path)
     if not ok then
         logger.error("Loader: " .. data)
         return nil, data
     end
+
     if data.sprite then loader._processSprite(data.sprite) end
     loader.emitterCache[fp] = data
     return data
 end
+
 function loader.unload(path)
     local fullPath = resolvePath(path)
     loader.spriteCache[fullPath] = nil
@@ -4166,6 +4851,7 @@ function loader.unload(path)
     loader.emitterCache[fullPath] = nil
     logger.info("Loader: Unloaded asset: " .. tostring(fullPath))
 end
+
 function loader.clearCache()
     loader.spriteCache = {}
     loader.imageCache = {}
@@ -4173,10 +4859,14 @@ function loader.clearCache()
     loader.emitterCache = {}
     logger.info("Loader: Asset cache cleared.")
 end
+
 return loader
 ]=]
 paths["core.loader"] = "core/loader"
 sources["core.logger"] = [=[
+
+
+
 
 local logger = {
     history = {},
@@ -4187,12 +4877,14 @@ local logger = {
     _fileInitialized = false,
     _consoleHook = nil,
 }
+
 local colors = {
     INFO = "0",
     WARN = "1",
     ERROR = "e",
     DEBUG = "7"
 }
+
 local severity = {
     debug = 1, DEBUG = 1,
     info  = 2, INFO  = 2,
@@ -4200,29 +4892,36 @@ local severity = {
     error = 4, ERROR = 4,
     off   = 5,
 }
+
 function logger.setLevel(level)
     if severity[level] == nil then
         error("Obsidian logger: unknown level " .. tostring(level), 2)
     end
     logger.level = level
 end
+
 function logger.setFileEnabled(enabled)
     logger.fileEnabled = enabled ~= false
 end
+
 function logger._add(level, msg)
     local threshold = severity[logger.level] or severity.info
     if (severity[level] or severity.info) < threshold then return end
+
     local timestamp = os.date("%H:%M:%S")
     local logLine = string.format("[%s] [%s] %s", timestamp, level, tostring(msg))
+
     local entry = {
         level = level,
         text = logLine,
         color = colors[level] or "0"
     }
+
     table.insert(logger.history, entry)
     if #logger.history > logger.maxHistory then
         table.remove(logger.history, 1)
     end
+
     if logger.fileEnabled then
         local mode = logger._fileInitialized and "a" or "w"
         local f = fs.open(logger.logFile, mode)
@@ -4232,19 +4931,28 @@ function logger._add(level, msg)
             f.close()
         end
     end
+
     if logger._consoleHook then
         logger._consoleHook(logLine, colors[level] or "0")
     end
 end
+
 function logger.info(msg) logger._add("INFO", msg) end
+
 function logger.warn(msg) logger._add("WARN", msg) end
+
 function logger.error(msg) logger._add("ERROR", msg) end
+
 function logger.debug(msg) logger._add("DEBUG", msg) end
+
 function logger.getHistory() return logger.history end
+
 return logger
 ]=]
 paths["core.logger"] = "core/logger"
 sources["core.math"] = [=[
+
+
 
 local m_sqrt  = math.sqrt
 local m_cos   = math.cos
@@ -4254,14 +4962,18 @@ local m_floor = math.floor
 local m_abs   = math.abs
 local m_min   = math.min
 local m_max   = math.max
+
 local Math = {}
+
 local Vector2 = {}
 Vector2.__index = Vector2
+
 function Math.vec2(x, y)
     local v = { x = x or 0, y = y or 0 }
     setmetatable(v, Vector2)
     return v
 end
+
 function Vector2.__add(v1, v2) return Math.vec2(v1.x + v2.x, v1.y + v2.y) end
 function Vector2.__sub(v1, v2) return Math.vec2(v1.x - v2.x, v1.y - v2.y) end
 function Vector2.__eq(v1, v2)  return v1.x == v2.x and v1.y == v2.y end
@@ -4273,49 +4985,61 @@ end
 function Vector2.__div(v, s) return Math.vec2(v.x / s, v.y / s) end
 function Vector2.__unm(v) return Math.vec2(-v.x, -v.y) end
 function Vector2.__tostring(v) return string.format("Vec2(%.2f, %.2f)", v.x, v.y) end
+
 function Vector2:dist(other)
     if not other then return math.huge end
     return Math.dist(self.x, self.y, other.x, other.y)
 end
+
 function Vector2:sqDist(other)
     if not other then return math.huge end
     local dx = self.x - other.x
     local dy = self.y - other.y
     return dx * dx + dy * dy
 end
+
 function Vector2:len()
     return m_sqrt(self.x * self.x + self.y * self.y)
 end
+
 function Vector2:sqLen()
     return self.x * self.x + self.y * self.y
 end
+
 function Vector2:normalize()
     local l = self:len()
     if l == 0 then return Math.vec2(0, 0) end
     return Math.vec2(self.x / l, self.y / l)
 end
+
 function Vector2:lerp(other, t)
     return Math.vec2(Math.lerp(self.x, other.x, t), Math.lerp(self.y, other.y, t))
 end
+
 function Vector2:dot(other)
     return self.x * other.x + self.y * other.y
 end
+
 function Vector2:unpack() return self.x, self.y end
+
 function Vector2:set(x, y)
     if x ~= nil then self.x = x end
     if y ~= nil then self.y = y end
     return self
 end
+
 function Vector2:add(v)
     self.x = self.x + v.x
     self.y = self.y + v.y
     return self
 end
+
 function Vector2:mul(s)
     self.x = self.x * s
     self.y = self.y * s
     return self
 end
+
 function Vector2:limit(max)
     local sq = self:sqLen()
     if sq > max * max then
@@ -4324,66 +5048,86 @@ function Vector2:limit(max)
     end
     return self
 end
+
 function Vector2:cross(other)
     return self.x * other.y - self.y * other.x
 end
+
 function Vector2:clone()
     return Math.vec2(self.x, self.y)
 end
+
 function Vector2:rotate(angle)
     local c = m_cos(angle)
     local s = m_sin(angle)
     return Math.vec2(self.x * c - self.y * s, self.x * s + self.y * c)
 end
+
 function Math.lerp(a, b, t)
     return a + (b - a) * t
 end
+
 function Math.applyDamping(velocity, amount, dt)
     local factor = (1 - amount) ^ (dt * 20)
     velocity.x = velocity.x * factor
     velocity.y = velocity.y * factor
 end
+
 function Math.isVec2(v)
     return type(v) == "table" and getmetatable(v) == Vector2
 end
+
 function Math.clamp(val, min, max)
     return m_min(m_max(val, min), max)
 end
+
 function Math.dist(x1, y1, x2, y2)
     local dx = x1 - x2
     local dy = y1 - y2
     return m_sqrt(dx * dx + dy * dy)
 end
+
 function Math.normalize(x, y)
     local length = m_sqrt(x * x + y * y)
     if length == 0 then return Math.vec2(0, 0) end
     return Math.vec2(x / length, y / length)
 end
+
 function Math.normalizeRaw(x, y)
     local length = m_sqrt(x * x + y * y)
     if length == 0 then return 0, 0, 0 end
     return x / length, y / length, length
 end
+
 function Math.round(val)
     return m_floor(val + 0.5)
 end
+
 function Math.sign(val)
     if val > 0 then return 1 elseif val < 0 then return -1 else return 0 end
 end
+
 function Math.angleBetween(x1, y1, x2, y2)
     return m_atan2(y2 - y1, x2 - x1)
 end
+
 function Math.fromAngle(angle, length)
     length = length or 1
     return Math.vec2(m_cos(angle) * length, m_sin(angle) * length)
 end
+
 return Math
 ]=]
 paths["core.math"] = "core/math"
 sources["core.network"] = [=[
 
+
 local require = ...
+
+
 local logger = require("core.logger")
+
+
 local network = {
     modemSide = nil,
     isOpen = false,
@@ -4400,8 +5144,10 @@ local network = {
     _lastPingTime = {},
     _heartbeatThread = nil
 }
+
 local _anyMessageHandlers = {}
 local _msgTypeHandlers = {}
+
 function network.onMessage(fn)
     table.insert(_anyMessageHandlers, fn)
     return function()
@@ -4410,11 +5156,13 @@ function network.onMessage(fn)
         end
     end
 end
+
 function network.offMessage(fn)
     for i, h in ipairs(_anyMessageHandlers) do
         if h == fn then table.remove(_anyMessageHandlers, i); break end
     end
 end
+
 function network.onMessageType(typeName, fn)
     if not _msgTypeHandlers[typeName] then _msgTypeHandlers[typeName] = {} end
     table.insert(_msgTypeHandlers[typeName], fn)
@@ -4426,6 +5174,7 @@ function network.onMessageType(typeName, fn)
         end
     end
 end
+
 function network.offMessageType(typeName, fn)
     local bucket = _msgTypeHandlers[typeName]
     if not bucket then return end
@@ -4433,28 +5182,33 @@ function network.offMessageType(typeName, fn)
         if h == fn then table.remove(bucket, i); break end
     end
 end
+
 local function _startHeartbeat()
     if network._heartbeatThread then return end
+
     local thread = require("core.thread")
     network._heartbeatThread = thread.start(function()
         while network.isOpen and (network.isHost or network.serverId) do
             local now = os.epoch("utc")
+
             if network.isHost then
                 local deadClients = {}
                 for clientId, client in pairs(network.clients) do
                     local lastPing = client.lastPing or client.connectedAt
                     if (now - lastPing) > (network._heartbeatTimeout * 1000) then
-                        logger.warn("Network: Client " .. clientId .. " timed out (no ping for " ..
+                        logger.warn("Network: Client " .. clientId .. " timed out (no ping for " .. 
                                   math.floor((now - lastPing) / 1000) .. "s)")
                         table.insert(deadClients, clientId)
                     else
                         network.send(clientId, { type = "PING", t = now }, network._protocol)
                     end
                 end
+
                 for _, clientId in ipairs(deadClients) do
                     network.clients[clientId] = nil
                     network._emit("network.clientTimeout", clientId)
                 end
+
             elseif network.serverId then
                 local lastPing = network._lastPingTime[network.serverId]
                 if lastPing and (now - lastPing) > (network._heartbeatTimeout * 1000) then
@@ -4467,12 +5221,15 @@ local function _startHeartbeat()
                     network.send(network.serverId, { type = "PING", t = now }, network._protocol)
                 end
             end
+
             sleep(network._heartbeatInterval)
         end
+
         network._heartbeatThread = nil
         logger.info("Network: Heartbeat thread stopped")
     end)
 end
+
 local function _stopHeartbeat()
     if network._heartbeatThread then
         local thread = require("core.thread")
@@ -4481,6 +5238,7 @@ local function _stopHeartbeat()
         logger.info("Network: Heartbeat stopped")
     end
 end
+
 function network.open(side)
     if side then
         if peripheral.getType(side) == "modem" then
@@ -4505,6 +5263,7 @@ function network.open(side)
     end
     return false
 end
+
 function network.close()
     if network.isOpen then
         _stopHeartbeat()
@@ -4516,6 +5275,7 @@ function network.close()
         logger.info("Network: All modems closed")
     end
 end
+
 function network.disconnect()
     if not network.isOpen then return end
     local protocol = network._protocol
@@ -4524,6 +5284,7 @@ function network.disconnect()
     elseif network.serverId then
         network.send(network.serverId, { type = "CLIENT_LEAVE" }, protocol)
     end
+
     network.isHost = false
     network.serverId = nil
     network._protocol = nil
@@ -4532,29 +5293,37 @@ function network.disconnect()
     network._lastPingTime = {}
     network.close()
 end
+
 function network.send(targetId, message, protocol)
     if not network.isOpen then return false end
+
     local proto = protocol or network._protocol
     if not proto then
         logger.warn("Network: send() called with no protocol specified and no default set")
         return false
     end
+
     rednet.send(targetId, message, proto)
     return true
 end
+
 function network.broadcast(message, protocol)
     if not network.isOpen then return false end
+
     local proto = protocol or network._protocol
     if not proto then
         logger.warn("Network: broadcast() called with no protocol specified and no default set")
         return false
     end
+
     rednet.broadcast(message, proto)
     return true
 end
+
 function network.connect(protocol, hostname, callback, timeout)
     timeout = timeout or 5
     logger.info("Network: connect() called — protocol='" .. tostring(protocol) .. "' hostname='" .. tostring(hostname) .. "' timeout=" .. tostring(timeout))
+
     if not network.isOpen then
         logger.info("Network: modem not open, attempting auto-open")
         local opened = network.open()
@@ -4565,22 +5334,26 @@ function network.connect(protocol, hostname, callback, timeout)
             return false, err
         end
     end
+
     if network._connecting then
         local err = "Already connecting"
         logger.warn("Network: connect() rejected — " .. err)
         if callback then callback(false, err) end
         return false, err
     end
+
     network._connecting      = true
     network._connectCallback = callback
     network._protocol        = protocol
     logger.info("Network: starting connect thread")
+
     local function _cleanup(ok, reason)
         local cb = network._connectCallback
         network._connectCallback = nil
         network._connecting = false
         if cb then cb(ok, reason) end
     end
+
     local thread = require("core.thread")
     thread.start(function()
         local success, err = pcall(function()
@@ -4588,6 +5361,7 @@ function network.connect(protocol, hostname, callback, timeout)
             local lookupOk, id_or_err = pcall(rednet.lookup, protocol, hostname)
             local id = lookupOk and id_or_err or nil
             logger.info("Network: [thread] lookup result — ok=" .. tostring(lookupOk) .. " id=" .. tostring(id))
+
             if not id then
                 logger.info("Network: [thread] DNS lookup failed, trying broadcast DISCOVER")
                 rednet.broadcast({ type = "DISCOVER", hostname = hostname }, protocol)
@@ -4609,6 +5383,7 @@ function network.connect(protocol, hostname, callback, timeout)
                     end
                 end
             end
+
             if not id then
                 local errMsg = (not lookupOk) and tostring(id_or_err) or "Server not found"
                 logger.warn("Network: [thread] connect failed — " .. errMsg)
@@ -4616,11 +5391,14 @@ function network.connect(protocol, hostname, callback, timeout)
                 network._emit("network.connectionFailed", protocol, hostname)
                 return
             end
+
             logger.info("Network: [thread] sending CONNECT_REQUEST to server ID " .. tostring(id))
             rednet.send(id, { type = "CONNECT_REQUEST" }, protocol)
+
             logger.info("Network: [thread] waiting up to " .. timeout .. "s for CONNECT_ACCEPT")
             local t = os.startTimer(timeout)
             local connectionEvent = "network_connect_" .. tostring(id)
+
             while true do
                 local ev, p1 = os.pullEvent()
                 if ev == "timer" and p1 == t then
@@ -4647,6 +5425,7 @@ function network.connect(protocol, hostname, callback, timeout)
                 end
             end
         end)
+
         if not success then
             logger.error("Network: [thread] crashed: " .. tostring(err))
             _cleanup(false, "Internal error: " .. tostring(err))
@@ -4655,6 +5434,7 @@ function network.connect(protocol, hostname, callback, timeout)
     end)
     return true
 end
+
 function network.cancelConnect(reason)
     if not network._connecting then return end
     local cb = network._connectCallback
@@ -4663,34 +5443,43 @@ function network.cancelConnect(reason)
     if cb then cb(false, reason or "Cancelled") end
     logger.info("Network: Connection cancelled — " .. (reason or "No reason"))
 end
+
 function network.host(protocol, hostname)
-    if not network.isOpen then
+    if not network.isOpen then 
         logger.warn("Network: Cannot host, modem not open")
-        return false
+        return false 
     end
+
     rednet.host(protocol, hostname)
     network.isHost    = true
     network._protocol = protocol
     network._hostname = hostname
     logger.info("Network: Now hosting protocol '" .. protocol .. "' as '" .. hostname .. "'")
+
     _startHeartbeat()
     return true
 end
+
 function network.lookup(protocol, hostname)
     if not network.isOpen then return nil end
     return rednet.lookup(protocol, hostname)
 end
+
 function network.setHeartbeat(interval, timeout)
     if interval then network._heartbeatInterval = interval end
     if timeout then network._heartbeatTimeout = timeout end
     logger.info("Network: Heartbeat configured — interval=" .. network._heartbeatInterval .. "s, timeout=" .. network._heartbeatTimeout .. "s")
 end
+
 function network.processEvent(eventData)
     if eventData[1] ~= "rednet_message" then return end
+
     local senderID, message, protocol = eventData[2], eventData[3], eventData[4]
+
     if senderID == network.serverId and protocol == network._protocol then
         network._lastPingTime[senderID] = os.epoch("utc")
     end
+
     if type(message) ~= "table" then
         network._emit("network.message", senderID, message, protocol)
         for _, h in ipairs(_anyMessageHandlers) do
@@ -4699,17 +5488,20 @@ function network.processEvent(eventData)
         end
         return
     end
+
     local msgType = message.type
+
     if msgType == "DISCOVER" and network.isHost then
         if message.hostname == network._hostname then
             network.send(senderID, { type = "DISCOVER_REPLY", hostname = network._hostname }, protocol)
         end
         return
     end
+
     if msgType == "CONNECT_REQUEST" and network.isHost then
         logger.info("Network: CONNECT_REQUEST from ID " .. senderID)
-        network.clients[senderID] = {
-            id = senderID,
+        network.clients[senderID] = { 
+            id = senderID, 
             connectedAt = os.epoch("utc"),
             lastPing = os.epoch("utc")
         }
@@ -4717,25 +5509,31 @@ function network.processEvent(eventData)
         network._emit("network.clientConnect", senderID)
         return
     end
+
     if msgType == "CONNECT_ACCEPT" then
         logger.info("Network: connected to server " .. senderID)
         network.serverId    = senderID
         network._connecting = false
         network._lastPingTime[senderID] = os.epoch("utc")
+
         os.queueEvent("network_connect_" .. tostring(senderID))
+
         network._emit("network.connected", senderID)
         _startHeartbeat()
         return
     end
+
     if msgType == "PING" then
         if network.isHost and network.clients[senderID] then
             network.clients[senderID].lastPing = os.epoch("utc")
         elseif senderID == network.serverId then
             network._lastPingTime[senderID] = os.epoch("utc")
         end
+
         network.send(senderID, { type = "PONG", t = message.t }, protocol)
         return
     end
+
     if msgType == "PONG" then
         if network.isHost and network.clients[senderID] then
             network.clients[senderID].lastPing = os.epoch("utc")
@@ -4744,22 +5542,27 @@ function network.processEvent(eventData)
         end
         return
     end
+
     if msgType == "CLIENT_LEAVE" and network.isHost then
         network.clients[senderID] = nil
         network._emit("network.clientDisconnect", senderID)
         return
     end
+
     if msgType == "SERVER_SHUTDOWN" and not network.isHost then
         network.serverId = nil
         _stopHeartbeat()
         network._emit("network.serverShutdown", senderID)
         return
     end
+
     network._emit("network.message", senderID, message, protocol)
+
     for _, h in ipairs(_anyMessageHandlers) do
         local ok, err = pcall(h, senderID, message, protocol)
         if not ok then logger.error("Network handler failed: " .. tostring(err)) end
     end
+
     if msgType and _msgTypeHandlers[msgType] then
         for _, h in ipairs(_msgTypeHandlers[msgType]) do
             local ok, err = pcall(h, senderID, message, protocol)
@@ -4767,17 +5570,24 @@ function network.processEvent(eventData)
         end
     end
 end
+
 return network
 ]=]
 paths["core.network"] = "core/network"
 sources["core.particles"] = [=[
 
+
 local require = ...
+
+
 local mathUtils = require("core.math")
 local physics = require("core.physics")
 local logger = require("core.logger")
 local loader = require("core.loader")
+
+
 local particles = {}
+
 function particles.createEmitter(config)
     return {
         active = config.active ~= false,
@@ -4799,6 +5609,7 @@ function particles.createEmitter(config)
         drag = config.drag or 0
     }
 end
+
 function particles.load(path)
     local config = loader.loadEmitter(path)
     if not config then
@@ -4807,20 +5618,25 @@ function particles.load(path)
     end
     return particles.createEmitter(config)
 end
+
 function particles.emitterSystem(scene)
     return function(dt, ids, components)
         for _, id in ipairs(ids) do
             local emitter = components.emitter[id]
             local pos = components.pos[id]
+
             if emitter.active and pos then
                 emitter.accumulator = emitter.accumulator + dt
                 local waitTime = 1 / emitter.spawnRate
+
                 while emitter.accumulator >= waitTime do
                     emitter.accumulator = emitter.accumulator - waitTime
+
                     local p = scene:spawn()
                     local angle = math.rad(emitter.angle + (math.random() - 0.5) * emitter.spread)
                     local speed = emitter.speedMin + math.random() * (emitter.speedMax - emitter.speedMin)
                     local life = emitter.lifeMin + math.random() * (emitter.lifeMax - emitter.lifeMin)
+
                     scene:attach(p, "pos", mathUtils.vec2(pos.x, pos.y))
                     scene:attach(p, "velocity", mathUtils.vec2(math.cos(angle) * speed, math.sin(angle) * speed))
                     scene:attach(p, "lifetime", life)
@@ -4830,6 +5646,7 @@ function particles.emitterSystem(scene)
                     if emitter.bounce then scene:attach(p, "particleBounce", true) end
                     if emitter.gravityScale ~= 0 then scene:attach(p, "particleGravity", emitter.gravityScale) end
                     if emitter.drag > 0 then scene:attach(p, "particleDrag", emitter.drag) end
+
                     if emitter.sprite then scene:attach(p, "sprite", emitter.sprite) end
                     if emitter.colors then scene:attach(p, "particleColors", emitter.colors) end
                     if emitter.chars then scene:attach(p, "particleChars", emitter.chars) end
@@ -4839,20 +5656,24 @@ function particles.emitterSystem(scene)
         end
     end
 end
+
 function particles.motionSystem(scene)
     return function(dt, ids, components)
         for _, id in ipairs(ids) do
             local pos = components.pos[id]
             local vel = components.velocity[id]
             local hasBounce = components.particleBounce and components.particleBounce[id]
+
             local drag = components.particleDrag and components.particleDrag[id]
             if drag then
                 mathUtils.applyDamping(vel, drag, dt)
             end
+
             local gScale = components.particleGravity and components.particleGravity[id]
             if gScale then
                 vel.y = vel.y + physics.GRAVITY_VECTOR.y * gScale * dt
             end
+
             if hasBounce then
                 local oldX = pos.x
                 pos.x = pos.x + vel.x * dt
@@ -4861,6 +5682,7 @@ function particles.motionSystem(scene)
                     pos.x = oldX
                     vel.x = -vel.x * 0.5
                 end
+
                 local oldY = pos.y
                 pos.y = pos.y + vel.y * dt
                 local hitY, _, slopeY = scene:isAreaBlocked(pos.x, pos.y, 1, 1, id)
@@ -4875,6 +5697,7 @@ function particles.motionSystem(scene)
         end
     end
 end
+
 function particles.updateSystem(scene)
     return function(dt, ids, components)
         for _, id in ipairs(ids) do
@@ -4882,15 +5705,19 @@ function particles.updateSystem(scene)
             local maxLife = components.maxLifetime[id]
             local colors = components.particleColors and components.particleColors[id]
             local chars = components.particleChars and components.particleChars[id]
+
             local progress = math.max(0, math.min(1, 1 - (life / (maxLife > 0 and maxLife or 1))))
+
             if colors then
                 local idx = math.max(1, math.min(#colors, math.ceil(progress * #colors)))
                 scene:attach(id, "colorOverride", colors[idx])
             end
+
             if chars then
                 local idx = math.max(1, math.min(#chars, math.ceil(progress * #chars)))
                 scene:attach(id, "charOverride", chars[idx])
             end
+
             local bgColors = components.particleBgColors and components.particleBgColors[id]
             if bgColors then
                 local idx = math.max(1, math.min(#bgColors, math.ceil(progress * #bgColors)))
@@ -4899,6 +5726,7 @@ function particles.updateSystem(scene)
         end
     end
 end
+
 function particles.cleanupSystem(scene)
     return function(dt, ids, components)
         for _, id in ipairs(ids) do
@@ -4909,28 +5737,38 @@ function particles.cleanupSystem(scene)
         end
     end
 end
+
 function particles.registerAll(scene)
     scene:addSystem({"emitter", "pos"}, particles.emitterSystem(scene))
     scene:addSystem({"pos", "velocity", "isParticle"}, particles.motionSystem(scene))
     scene:addSystem({"lifetime", "maxLifetime", "isParticle"}, particles.updateSystem(scene))
     scene:addSystem({"lifetime", "isParticle"},  particles.cleanupSystem(scene))
 end
+
 return particles
 ]=]
 paths["core.particles"] = "core/particles"
 sources["core.pathfinding"] = [=[
 
+
 local require = ...
+
+
 local mathUtils = require("core.math")
 local logger = require("core.logger")
+
 local m_floor = math.floor
 local m_abs = math.abs
 local m_min = math.min
+
 local Pathfinding = {}
 Pathfinding.MAX_ITERATIONS = 4000
+
+
 local function createHeap()
     local data = {}
     local size = 0
+
     local function push(node, priority)
         size = size + 1
         data[size] = { node = node, priority = priority }
@@ -4943,6 +5781,7 @@ local function createHeap()
             else break end
         end
     end
+
     local function pop()
         if size == 0 then return nil end
         local root = data[1].node
@@ -4961,21 +5800,29 @@ local function createHeap()
         end
         return root
     end
+
     local function isEmpty() return size == 0 end
+
     return { push = push, pop = pop, isEmpty = isEmpty }
 end
+
+
 local KEY_W = 10000
 local function nodeKey(x, y) return y * KEY_W + x end
 local function keyToX(k) return k % KEY_W end
 local function keyToY(k) return m_floor(k / KEY_W) end
+
+
 local CARD = 1
 local DIAG = 1.414
 local DIAG_ADJ = DIAG - 2 * CARD
+
 local function heuristic(ax, ay, bx, by)
     local dx = m_abs(ax - bx)
     local dy = m_abs(ay - by)
     return CARD * (dx + dy) + DIAG_ADJ * m_min(dx, dy)
 end
+
 local _nb = {
     { dx =  1, dy =  0, cost = CARD },
     { dx = -1, dy =  0, cost = CARD },
@@ -4986,16 +5833,20 @@ local _nb = {
     { dx =  1, dy = -1, cost = DIAG },
     { dx = -1, dy = -1, cost = DIAG },
 }
+
 local A_PAD = 0
+
 local function isBlocked(scene, nx, ny, cw, ch, ignoreId, mask)
     return scene:isAreaBlocked(
         nx - A_PAD, ny - A_PAD,
         cw + A_PAD * 2, ch + A_PAD * 2,
         ignoreId, mask)
 end
+
 local function hasLOS(scene, ax, ay, bx, by, cw, ch, ignoreId, mask)
     return scene:hasLOS(ax, ay, bx, by, cw, ch, ignoreId, mask)
 end
+
 local function smoothPath(scene, path, cw, ch, ignoreId, mask)
     if #path <= 2 then return path end
     local out    = { path[1] }
@@ -5014,40 +5865,52 @@ local function smoothPath(scene, path, cw, ch, ignoreId, mask)
     end
     return out
 end
+
+
 function Pathfinding.findPath(scene, startPos, endPos, collider, ignoreId, layerMask, smooth, maxIterations)
     if not startPos or not endPos then
         logger.error("[pathfinding] findPath: startPos or endPos is nil")
         return nil
     end
+
     collider = collider or { w = 1, h = 1 }
     local cw, ch = collider.w, collider.h
     smooth = smooth ~= false
+
     local sx, sy = m_floor(startPos.x), m_floor(startPos.y)
     local gx, gy = m_floor(endPos.x),   m_floor(endPos.y)
+
     if sx == gx and sy == gy then
         return { mathUtils.vec2(sx, sy) }
     end
+
     local openSet  = createHeap()
     local gScore   = {}
     local cameFrom = {}
     local closed   = {}
+
     local startKey = nodeKey(sx, sy)
     local goalKey  = nodeKey(gx, gy)
     gScore[startKey] = 0
     openSet.push({ x = sx, y = sy }, heuristic(sx, sy, gx, gy))
+
     local iters   = 0
     local maxIter = maxIterations or Pathfinding.MAX_ITERATIONS
+
     while not openSet.isEmpty() do
         local cur    = openSet.pop()
         local cx, cy = cur.x, cur.y
         local ck     = nodeKey(cx, cy)
+
         if not closed[ck] then
             closed[ck] = true
             iters = iters + 1
+
             if iters > maxIter then
                 logger.error("[pathfinding] MAX_ITERATIONS (" .. maxIter .. ") exceeded — map may be too large or goal unreachable")
                 return nil
             end
+
             if cx == gx and cy == gy then
                 local raw = {}
                 local k   = ck
@@ -5065,12 +5928,14 @@ function Pathfinding.findPath(scene, startPos, endPos, collider, ignoreId, layer
                 end
                 return raw
             end
+
             local cg = gScore[ck]
             for i = 1, 8 do
                 local nb = _nb[i]
                 local nx = cx + nb.dx
                 local ny = cy + nb.dy
                 local nk = nodeKey(nx, ny)
+
                 local isGoal = (nk == goalKey)
                 if not closed[nk]
                 and (isGoal or not isBlocked(scene, nx, ny, cw, ch, ignoreId, layerMask)) then
@@ -5081,6 +5946,7 @@ function Pathfinding.findPath(scene, startPos, endPos, collider, ignoreId, layer
                             ok = false
                         end
                     end
+
                     if ok then
                         local tg = cg + nb.cost
                         if not gScore[nk] or tg < gScore[nk] then
@@ -5095,22 +5961,31 @@ function Pathfinding.findPath(scene, startPos, endPos, collider, ignoreId, layer
         end
     end
 end
+
 return Pathfinding
 ]=]
 paths["core.pathfinding"] = "core/pathfinding"
 sources["core.physics"] = [=[
 
+
 local require = ...
+
 local M = require("core.math")
+
+
 local Physics = {}
 Physics.GRAVITY_VECTOR = M.vec2(0, 50)
+
 function Physics.gravity()
     return M.vec2(Physics.GRAVITY_VECTOR.x, Physics.GRAVITY_VECTOR.y)
 end
+
 function Physics.setGravity(x, y)
     Physics.GRAVITY_VECTOR.x = x
     Physics.GRAVITY_VECTOR.y = y
 end
+
+
 function Physics.createBody(config)
     config = config or {}
     return {
@@ -5122,6 +5997,8 @@ function Physics.createBody(config)
         useGravity = config.useGravity ~= false,
     }
 end
+
+
 function Physics.resolveBounce(velocity, normal, bounciness)
     bounciness = bounciness or 1.0
     local dot = velocity:dot(normal)
@@ -5130,21 +6007,27 @@ function Physics.resolveBounce(velocity, normal, bounciness)
     end
     return velocity
 end
+
 function Physics.resolveCollision(body1, vel1, body2, vel2, normal)
     local m1 = body1.mass or 1.0
     local m2 = body2.mass or 1.0
     if m1 <= 0 and m2 <= 0 then return end
+
     local e = math.min(body1.bounciness or 0, body2.bounciness or 0)
+
     local relVel = vel1 - vel2
     local velAlongNormal = relVel:dot(normal)
     if velAlongNormal > 0 then return end
+
     local invM1 = m1 > 0 and (1 / m1) or 0
     local invM2 = m2 > 0 and (1 / m2) or 0
     local j     = -(1 + e) * velAlongNormal / (invM1 + invM2)
+
     local impulse = normal * j
     vel1:add(impulse *  invM1)
     vel2:add(impulse * -invM2)
 end
+
 function Physics.applyImpulse(velocity, force, mass)
     local m = mass or 1.0
     if m <= 0 then return end
@@ -5154,20 +6037,25 @@ function Physics.applyImpulse(velocity, force, mass)
         velocity.x = velocity.x + (force / m)
     end
 end
+
+
 function Physics.aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh)
     return ax < bx + bw and ax + aw > bx
        and ay < by + bh and ay + ah > by
 end
+
 function Physics.getAABBOverlap(ax, ay, aw, ah, bx, by, bw, bh)
     if not Physics.aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) then
         return nil, 0
     end
     local overlapX = math.min(ax + aw, bx + bw) - math.max(ax, bx)
     local overlapY = math.min(ay + ah, by + bh) - math.max(ay, by)
+
     local cax, cay = ax + aw * 0.5, ay + ah * 0.5
     local cbx, cby = bx + bw * 0.5, by + bh * 0.5
     local normDx = math.abs(cax - cbx) / ((aw + bw) * 0.5)
     local normDy = math.abs(cay - cby) / ((ah + bh) * 0.5)
+
     if normDx >= normDy then
         local nx = cax < cbx and -1 or 1
         return M.vec2(nx, 0), overlapX
@@ -5176,6 +6064,8 @@ function Physics.getAABBOverlap(ax, ay, aw, ah, bx, by, bw, bh)
         return M.vec2(0, ny), overlapY
     end
 end
+
+
 function Physics.system(scene, steps)
     steps = math.max(1, math.floor(steps or 1))
     return function(dt, ids, components)
@@ -5183,8 +6073,10 @@ function Physics.system(scene, steps)
         local velocities = components.vel
         local bodies = components.body
         if not positions or not velocities or not bodies then return end
+
         local grav  = Physics.gravity()
         local subDt = dt / steps
+
         for _ = 1, steps do
             for _, id in ipairs(ids) do
                 local pos  = positions[id]
@@ -5195,11 +6087,13 @@ function Physics.system(scene, steps)
                         vel.x = vel.x + grav.x * body.gravityScale * subDt
                         vel.y = vel.y + grav.y * body.gravityScale * subDt
                     end
+
                     if body.friction and body.friction > 0 then
                         local factor = (1 - body.friction) ^ (subDt * 20)
                         vel.x = vel.x * factor
                         vel.y = vel.y * factor
                     end
+
                     local col = components.collider and components.collider[id]
                     if col and scene and scene.isAreaBlocked then
                         local oldX = pos.x
@@ -5209,6 +6103,7 @@ function Physics.system(scene, steps)
                             pos.x = oldX
                             vel.x = -(vel.x or 0) * (body.bounciness or 0)
                         end
+
                         local oldY = pos.y
                         pos.y = pos.y + vel.y * subDt
                         local hitY, _, slopeY = scene:isAreaBlocked(pos.x, pos.y, col.w or 1, col.h or 1, id)
@@ -5226,18 +6121,23 @@ function Physics.system(scene, steps)
                     end
                 end
             end
+
             if components.onSubStep then
                 components.onSubStep(ids)
             end
         end
     end
 end
+
 return Physics
 ]=]
 paths["core.physics"] = "core/physics"
 sources["core.scene"] = [=[
 
+
 local require = ...
+
+
 local ecs = require("core.ecs")
 local logger = require("core.logger")
 local loader = require("core.loader")
@@ -5246,20 +6146,33 @@ local uiModule = require("core.ui")
 local errorModule = require("core.error")
 local EventEmitter = require("core.event")
 local debug = require("core.debug")
+
+
+
+
+
+
+
 local buffer = nil
+
 local Scene = {}
+
 local WorldProto = getmetatable(ecs.new())
 local SceneInstance = setmetatable({}, { __index = WorldProto })
 SceneInstance.__index = SceneInstance
+
 function Scene.setBuffer(buf)
     buffer = buf
 end
+
 local _luaDebug = _G and _G.debug
+
 local function tracebackHandler(e)
     return (_luaDebug and _luaDebug.traceback)
         and _luaDebug.traceback(tostring(e), 2)
         or tostring(e)
 end
+
 local function deepCopy(orig)
     local copy
     if type(orig) ~= 'table' then return orig end
@@ -5268,43 +6181,62 @@ local function deepCopy(orig)
     setmetatable(copy, deepCopy(getmetatable(orig)))
     return copy
 end
+
+
 function Scene.new()
     local self = ecs.new()
     setmetatable(self, SceneInstance)
+
     self.name = ""
     self.memory = {}
+
     self.camera = mathUtils.vec2(0, 0)
     self._lastCam = mathUtils.vec2(0, 0)
     self._camera = nil
+
     self.event = EventEmitter.new()
+
     self.ui = uiModule.new(buffer)
+
     self.tilemap = nil
+
+
     self._staticElements = {}
     self._staticCache = { t = {}, f = {}, b = {} }
     self._staticDirty = true
     self._staticSortDirty = false
+
     self._foregroundElements = {}
     self._foregroundSortDirty = false
+
     self._rowsToRestore = {}
     self._sortedEntities = {}
     self._zDirty = true
+
+
     self._cellSize = 10
     self._spatialGrid = {}
     self._activeDynamicCells = {}
+
+
     self._triggers = {}
     self._systems = {
         update = {},
         render = {}
     }
+
     self._hudCallbacks = {}
     self._nextHudId = 0
+
     self.onUpdate = nil
     self.onDraw = nil
     self.onEvent = nil
     self.onLoad = nil
     self.onUnload = nil
+
     return self
 end
+
 function Scene.newStaticElement(sprite, x, y, config)
     config = config or {}
     return {
@@ -5320,6 +6252,7 @@ function Scene.newStaticElement(sprite, x, y, config)
         oneWay = config.oneWay or false
     }
 end
+
 function Scene.newTriggerZone(x, y, w, h, onEnter, onExit, onStay)
     return {
         x = x,
@@ -5332,6 +6265,7 @@ function Scene.newTriggerZone(x, y, w, h, onEnter, onExit, onStay)
         entitiesInside = {}
     }
 end
+
 function Scene.newTilemap(sprite, data, solidTiles, tileProperties, spritePath)
     return {
         sprite = sprite,
@@ -5343,6 +6277,9 @@ function Scene.newTilemap(sprite, data, solidTiles, tileProperties, spritePath)
         tileH = sprite and sprite.height or 1
     }
 end
+
+
+
 function SceneInstance:setTilemap(sprite, data, solidTiles, tileProperties, spritePath)
     self.tilemap = {
         sprite = sprite,
@@ -5355,6 +6292,7 @@ function SceneInstance:setTilemap(sprite, data, solidTiles, tileProperties, spri
     }
     self._staticDirty = true
 end
+
 function SceneInstance:instantiate(template, x, y)
     local id = self:spawn()
     for compName, data in pairs(template) do
@@ -5369,14 +6307,17 @@ function SceneInstance:instantiate(template, x, y)
     end
     return id
 end
+
 function SceneInstance:setParent(childId, parentId, offsetX, offsetY)
     self:attach(childId, "parent", {
         id = parentId,
         offset = mathUtils.vec2(offsetX or 0, offsetY or 0)
     })
 end
+
 function SceneInstance:addStatic(sprite, x, y, config)
     config = config or {}
+
     if not sprite and not config.collider then
         logger.warn(string.format(
             "Scene: addStatic at (%.1f, %.1f) with nil sprite and no collider",
@@ -5400,6 +6341,7 @@ function SceneInstance:addStatic(sprite, x, y, config)
     self._staticDirty = true
     self:_addToGrid(item, true)
 end
+
 function SceneInstance:addForeground(sprite, x, y, z)
     table.insert(self._foregroundElements, {
         sprite = sprite,
@@ -5411,6 +6353,7 @@ function SceneInstance:addForeground(sprite, x, y, z)
     })
     self._foregroundSortDirty = true
 end
+
 function SceneInstance:_addToGrid(obj, isStatic, id)
     if obj.collider == false then return end
     local col = obj.collider or { x = 0, y = 0, w = obj.w, h = obj.h }
@@ -5418,6 +6361,7 @@ function SceneInstance:_addToGrid(obj, isStatic, id)
     local y1 = math.floor((obj.y + col.y) / self._cellSize)
     local x2 = math.floor((obj.x + col.x + col.w - 0.001) / self._cellSize)
     local y2 = math.floor((obj.y + col.y + col.h - 0.001) / self._cellSize)
+
     for cx = x1, x2 do
         for cy = y1, y2 do
             self._spatialGrid[cx] = self._spatialGrid[cx] or {}
@@ -5438,16 +6382,19 @@ function SceneInstance:_addToGrid(obj, isStatic, id)
         end
     end
 end
+
 function SceneInstance:_updateDynamicGrid()
     for i = 1, #self._activeDynamicCells do
         self._activeDynamicCells[i].dynamic = {}
     end
     self._activeDynamicCells = {}
+
     local entities = self:select("pos", "collider")
     for _, id in ipairs(entities) do
         local p = self:get(id, "pos")
         local c = self:get(id, "collider")
         local l = self:get(id, "layer") or 1
+
         self:_addToGrid({
             x = p.x,
             y = p.y,
@@ -5458,16 +6405,19 @@ function SceneInstance:_updateDynamicGrid()
         }, false, id)
     end
 end
+
 function SceneInstance:getEntityAt(worldX, worldY, ignoreId)
     local cx = math.floor(worldX / self._cellSize)
     local cy = math.floor(worldY / self._cellSize)
     local cell = self._spatialGrid[cx] and self._spatialGrid[cx][cy]
+
     if cell then
         for id, obj in pairs(cell.dynamic) do
             if id ~= ignoreId then
                 local col = obj.collider
                 local icx = obj.x + col.x
                 local icy = obj.y + col.y
+
                 if worldX >= icx and worldX < icx + col.w and
                    worldY >= icy and worldY < icy + col.h then
                     return id
@@ -5477,18 +6427,21 @@ function SceneInstance:getEntityAt(worldX, worldY, ignoreId)
     end
     return nil
 end
+
 function SceneInstance:getDistance(id1, id2)
     local p1 = self:get(id1, "pos")
     local p2 = self:get(id2, "pos")
     if not p1 or not p2 then return 9999 end
     return mathUtils.dist(p1.x, p1.y, p2.x, p2.y)
 end
+
 function SceneInstance:queryRect(x, y, w, h, layerMask)
     local results = {}
     local x1 = math.floor(x / self._cellSize)
     local y1 = math.floor(y / self._cellSize)
     local x2 = math.floor((x + w) / self._cellSize)
     local y2 = math.floor((y + h) / self._cellSize)
+
     for cx = x1, x2 do
         if self._spatialGrid[cx] then
             for cy = y1, y2 do
@@ -5499,6 +6452,7 @@ function SceneInstance:queryRect(x, y, w, h, layerMask)
                             local c = obj.collider
                             local icx = obj.x + c.x
                             local icy = obj.y + c.y
+
                             if x < icx + c.w and x + w > icx and
                                y < icy + c.h and y + h > icy then
                                 table.insert(results, id)
@@ -5508,9 +6462,12 @@ function SceneInstance:queryRect(x, y, w, h, layerMask)
                 end
             end
         end
+
     end
+
     return results
 end
+
 function SceneInstance:getUIAt(screenX, screenY)
     local ox, oy = 0, 0
     if debug.designW and debug.designH then
@@ -5518,39 +6475,50 @@ function SceneInstance:getUIAt(screenX, screenY)
         ox = math.floor((tw - debug.designW) / 2)
         oy = math.floor((th - debug.designH) / 2)
     end
+
     for i = #self.ui.sorted, 1, -1 do
         local el = self.ui.sorted[i]
         local ex, ey = self.ui:getAbsolutePos(el, ox, oy)
+
         if screenX >= ex and screenX < ex + el.w and
            screenY >= ey and screenY < ey + el.h then
             return el.name
         end
     end
 end
+
+
 function SceneInstance:castRay(startX, startY, targetX, targetY, maxDist, ignoreId, layerMask)
     local stepX, stepY, dist = mathUtils.normalizeRaw(targetX - startX, targetY - startY)
+
     if dist == 0 then
         return false, startX, startY
     end
+
     local checkDist = math.min(dist, maxDist or 100)
+
     for d = 0, checkDist, 0.5 do
         local curX = startX + stepX * d
         local curY = startY + stepY * d
+
         local cx = math.floor(curX / self._cellSize)
         local cy = math.floor(curY / self._cellSize)
         local cell = self._spatialGrid[cx] and self._spatialGrid[cx][cy]
+
         if cell then
             for id, obj in pairs(cell.dynamic) do
                 if id ~= ignoreId and (not layerMask or bit.band(obj.layer or 1, layerMask) > 0) then
                     local c = obj.collider
                     local ox = (obj.x or 0) + (c.x or 0)
                     local oy = (obj.y or 0) + (c.y or 0)
+
                     if curX >= ox and curX < ox + (c.w or 0) and
                        curY >= oy and curY < oy + (c.h or 0) then
                         return true, curX, curY, id
                     end
                 end
             end
+
             for _, item in ipairs(cell.static) do
                 if item.collider ~= false and
                    (not layerMask or bit.band(item.layer or 1, layerMask) > 0) then
@@ -5559,6 +6527,7 @@ function SceneInstance:castRay(startX, startY, targetX, targetY, maxDist, ignore
                     local oy = (item.y or 0) + (col and col.y or 0)
                     local ow = col and col.w or item.w or 0
                     local oh = col and col.h or item.h or 0
+
                     if curX >= ox and curX < ox + ow and
                        curY >= oy and curY < oy + oh then
                         return true, curX, curY, nil
@@ -5567,11 +6536,14 @@ function SceneInstance:castRay(startX, startY, targetX, targetY, maxDist, ignore
             end
         end
     end
+
     return false, startX + stepX * checkDist, startY + stepY * checkDist
 end
+
 function SceneInstance:hasLOS(ax, ay, bx, by, cw, ch, ignoreId, layerMask)
     cw = cw or 1
     ch = ch or 1
+
     local x0, y0 = math.floor(ax), math.floor(ay)
     local x1, y1 = math.floor(bx), math.floor(by)
     local dx = math.abs(x1 - x0)
@@ -5580,44 +6552,54 @@ function SceneInstance:hasLOS(ax, ay, bx, by, cw, ch, ignoreId, layerMask)
     local sy = y0 < y1 and 1 or -1
     local err = dx - dy
     local cx, cy = x0, y0
+
     while cx ~= x1 or cy ~= y1 do
         local e2 = 2 * err
         local stepX = e2 > -dy
         local stepY = e2 < dx
+
         if stepX and stepY then
             if self:isAreaBlocked(cx + sx, cy, cw, ch, ignoreId, layerMask) or
                self:isAreaBlocked(cx, cy + sy, cw, ch, ignoreId, layerMask) then
                 return false
             end
         end
+
         if stepX then err = err - dy; cx = cx + sx end
         if stepY then err = err + dx; cy = cy + sy end
+
         if (cx ~= x1 or cy ~= y1) and
            self:isAreaBlocked(cx, cy, cw, ch, ignoreId, layerMask) then
             return false
         end
     end
+
     return true
 end
+
 function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
     local bestSlopeY = nil
+
     if self.tilemap then
         local tm = self.tilemap
         local startX = math.floor(x / tm.tileW) + 1
         local startY = math.floor(y / tm.tileH) + 1
         local endX = math.floor((x + w - 0.001) / tm.tileW) + 1
         local endY = math.floor((y + h - 0.001) / tm.tileH) + 1
+
         for ty = startY, endY do
             if tm.data[ty] then
                 for tx = startX, endX do
                     local tileId = tm.data[ty][tx]
                     if tileId then
                         local prop = tm.tileProperties[tileId]
+
                         if prop and prop.type == "slope" then
                             local relX = (x + w/2 - (tx-1)*tm.tileW) / tm.tileW
                             relX = mathUtils.clamp(relX, 0, 1)
                             local slopeHeight = mathUtils.lerp(prop.hL, prop.hR, relX) * tm.tileH
                             local groundY = (ty-1)*tm.tileH + (tm.tileH - slopeHeight)
+
                             if y + h > groundY then
                                 bestSlopeY = groundY
                             end
@@ -5625,6 +6607,7 @@ function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
                             local platformY = (ty-1)*tm.tileH
                             if ignoreId then
                                 local vel = self:get(ignoreId, "velocity")
+
                                 if vel and vel.y > 0 and
                                 (y + h - vel.y * 0.1) <= platformY then
                                     if y + h > platformY then
@@ -5640,13 +6623,16 @@ function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
             end
         end
     end
+
     if bestSlopeY then
         return true, "tile", bestSlopeY
     end
+
     local x1 = math.floor(x / self._cellSize)
     local y1 = math.floor(y / self._cellSize)
     local x2 = math.floor((x + w - 0.001) / self._cellSize)
     local y2 = math.floor((y + h - 0.001) / self._cellSize)
+
     for cx = x1, x2 do
         if self._spatialGrid[cx] then
             for cy = y1, y2 do
@@ -5657,6 +6643,7 @@ function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
                            (not layerMask or bit.band(item.layer or 1, layerMask) > 0) then
                             local col = item.collider
                             local ox, oy, ow, oh
+
                             if col then
                                 ox = item.x + (col.x or 0)
                                 oy = item.y + (col.y or 0)
@@ -5668,6 +6655,7 @@ function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
                                 ow = item.w or 0
                                 oh = item.h or 0
                             end
+
                             if x < ox + ow and x + w > ox and
                                y < oy + oh and y + h > oy then
                                 if item.oneWay then
@@ -5684,12 +6672,14 @@ function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
                             end
                         end
                     end
+
                     for id, obj in pairs(cell.dynamic) do
                         if id ~= ignoreId and
                            (not layerMask or bit.band(obj.layer or 1, layerMask) > 0) then
                             local col = obj.collider
                             local ox = (obj.x or 0) + (col.x or 0)
                             local oy = (obj.y or 0) + (col.y or 0)
+
                             if x < ox + (col.w or 0) and x + w > ox and
                                y < oy + (col.h or 0) and y + h > oy then
                                 return true, id
@@ -5700,8 +6690,11 @@ function SceneInstance:isAreaBlocked(x, y, w, h, ignoreId, layerMask)
             end
         end
     end
+
     return false
 end
+
+
 function SceneInstance:addTrigger(x, y, w, h, onEnter, onExit)
     table.insert(self._triggers, {
         x = x,
@@ -5713,6 +6706,7 @@ function SceneInstance:addTrigger(x, y, w, h, onEnter, onExit)
         entitiesInside = {}
     })
 end
+
 function SceneInstance:_updateTriggers()
     for _, trigger in ipairs(self._triggers) do
         local entities = self:queryRect(trigger.x, trigger.y, trigger.w, trigger.h)
@@ -5720,6 +6714,7 @@ function SceneInstance:_updateTriggers()
         for _, id in ipairs(entities) do
             entityMap[id] = true
         end
+
         for id in pairs(trigger.entitiesInside) do
             if not entityMap[id] then
                 if trigger.onExit then
@@ -5728,6 +6723,7 @@ function SceneInstance:_updateTriggers()
                 trigger.entitiesInside[id] = nil
             end
         end
+
         for _, id in ipairs(entities) do
             if not trigger.entitiesInside[id] then
                 if trigger.onEnter then
@@ -5738,16 +6734,20 @@ function SceneInstance:_updateTriggers()
         end
     end
 end
+
+
 function SceneInstance:loadUI(path, x, y)
     local uiData, err = loader.loadUI(path)
     if not uiData then
         logger.error("Failed to load OUI: " .. tostring(err))
         return
     end
+
     for name, el in pairs(uiData.elements) do
         self.ui:add(name, el.type, (x or 0) + (el.x or 0), (y or 0) + (el.y or 0), el)
     end
 end
+
 function SceneInstance:unloadUI(path)
     local uiData = loader.loadUI(path)
     if uiData then
@@ -5756,18 +6756,22 @@ function SceneInstance:unloadUI(path)
         end
     end
 end
+
 function SceneInstance:addUI(name, type, x, y, config)
     return self.ui:add(name, type, x, y, config)
 end
+
 function SceneInstance:updateUI(name, config)
     self.ui:update(name, config)
 end
+
 function SceneInstance:bindHUD(name, fn)
     self._nextHudId = (self._nextHudId or 0) + 1
     local id = self._nextHudId
     table.insert(self._hudCallbacks, { id = id, name = name, fn = fn })
     return id
 end
+
 function SceneInstance:unbindHUD(id)
     for i = #self._hudCallbacks, 1, -1 do
         if self._hudCallbacks[i].id == id then
@@ -5775,14 +6779,19 @@ function SceneInstance:unbindHUD(id)
         end
     end
 end
+
+
 function SceneInstance:addSystem(filter, fn)
     table.insert(self._systems.update, {
         filter = filter,
         update = fn
     })
 end
+
+
 function SceneInstance:attach(id, component, data)
     WorldProto.attach(self, id, component, data)
+
     if component == "z" or component == "sprite" then
         if component == "sprite" and data == nil then
             logger.warn("Scene: Sprite component set to nil for entity " .. tostring(id))
@@ -5790,14 +6799,17 @@ function SceneInstance:attach(id, component, data)
         self._zDirty = true
     end
 end
+
 function SceneInstance:despawn(id)
     local p = self:get(id, "pos")
     local s = self:get(id, "sprite")
+
     if p and s then
         local termW, termH = buffer:getSize()
         local designW, designH = debug.designW, debug.designH
         local offsetY = (designW and designH) and math.floor((termH - designH) / 2) or 0
         local totalCamY = self.camera.y - offsetY
+
         local sy = math.floor(p.y - totalCamY)
         for i = 0, s.height - 1 do
             local targetY = sy + i
@@ -5806,16 +6818,21 @@ function SceneInstance:despawn(id)
             end
         end
     end
+
     WorldProto.despawn(self, id)
     self._zDirty = true
 end
+
+
 function SceneInstance:update(dt)
     self:_updateDynamicGrid()
+
     local children = self:select("pos", "parent")
     for _, id in ipairs(children) do
         local parentData = self:get(id, "parent")
         local parentPos = self:get(parentData.id, "pos")
         local childPos = self:get(id, "pos")
+
         if parentPos and childPos then
             childPos:set(
                 parentPos.x + parentData.offset.x,
@@ -5823,18 +6840,22 @@ function SceneInstance:update(dt)
             )
         end
     end
+
     for _, system in ipairs(self._systems.update) do
         local entities = self:select(table.unpack(system.filter))
         local ok, err = xpcall(function()
             system.update(dt, entities, self._store)
         end, tracebackHandler)
+
         if not ok then
             local filterStr = "[" .. table.concat(system.filter, ", ") .. "]"
             errorModule.report("System " .. filterStr .. ":\n" .. err)
             return
         end
     end
+
     self:_updateTriggers()
+
     if self.onUpdate then
         local ok, err = xpcall(self.onUpdate, tracebackHandler, dt)
         if not ok then
@@ -5842,6 +6863,7 @@ function SceneInstance:update(dt)
             return
         end
     end
+
     for _, hud in ipairs(self._hudCallbacks) do
         local ok, err = xpcall(function() hud.fn(self, dt) end, tracebackHandler)
         if not ok then
@@ -5849,52 +6871,67 @@ function SceneInstance:update(dt)
         end
     end
 end
+
+
 function SceneInstance:draw()
+
     local camMoved = self.camera.x ~= self._lastCam.x or
                     self.camera.y ~= self._lastCam.y
     local termW, termH = buffer:getSize()
+
     local designW, designH = debug.designW, debug.designH
     local offsetX, offsetY = 0, 0
     if designW and designH then
         offsetX = math.max(0, math.floor((termW - designW) / 2))
         offsetY = math.max(0, math.floor((termH - designH) / 2))
     end
+
     local shakeX, shakeY = 0, 0
     if self._camera and self._camera:isShaking() then
         shakeX, shakeY = self._camera:getShakeOffset()
     end
+
     local totalCamX = self.camera.x - offsetX + shakeX
     local totalCamY = self.camera.y - offsetY + shakeY
+
     if self._staticSortDirty then
         table.sort(self._staticElements, function(a, b)
             return a.z < b.z
         end)
         self._staticSortDirty = false
     end
+
     if self._foregroundSortDirty then
         table.sort(self._foregroundElements, function(a, b)
             return a.z < b.z
         end)
         self._foregroundSortDirty = false
     end
+
     if self._staticDirty or camMoved or
        (self._camera and self._camera:isShaking()) then
         self:_renderStatic(totalCamX, totalCamY, termW, termH)
     else
         self:_restoreRows()
     end
+
     self:_renderEntities(totalCamX, totalCamY, termW, termH)
+
     self:_renderForeground(totalCamX, totalCamY, termW, termH)
+
     if not debug.unsupportedResolution then
         self.ui:draw(offsetX, offsetY, self._rowsToRestore)
     end
+
     if self._camera and self._camera:isFlashing() then
         local fc = self._camera:getFlashColor()
         buffer:drawRect(1, 1, termW, termH, " ", fc, fc)
     end
+
     if debug.enabled then
         self:_renderDebug(termW, termH)
     end
+
     if self.onDraw then
         local ok, err = xpcall(self.onDraw, tracebackHandler)
         if not ok then
@@ -5902,14 +6939,17 @@ function SceneInstance:draw()
         end
     end
 end
+
 function SceneInstance:_renderStatic(camX, camY, termW, termH)
     buffer:clear()
+
     if self.tilemap then
         local tm = self.tilemap
         local startX = math.max(1, math.floor(camX / tm.tileW) + 1)
         local startY = math.max(1, math.floor(camY / tm.tileH) + 1)
         local endX = math.floor((camX + termW) / tm.tileW) + 1
         local endY = math.floor((camY + termH) / tm.tileH) + 1
+
         if tm.layers then
             for _, layer in ipairs(tm.layers) do
                 for ty = startY, endY do
@@ -5946,27 +6986,32 @@ function SceneInstance:_renderStatic(camX, camY, termW, termH)
             end
         end
     end
+
     for _, item in ipairs(self._staticElements) do
         local s = item.sprite
         local sx = math.floor(item.x - camX)
         local sy = math.floor(item.y - camY)
+
         if s and s[1] and
            sx + s.width >= 1 and sx <= termW and
            sy + s.height >= 1 and sy <= termH then
             buffer:drawSprite(s[1], item.x, item.y, camX, camY)
         end
     end
+
     buffer:copyTo(self._staticCache)
     self._staticDirty = false
     self._rowsToRestore = {}
     self._lastCam.x, self._lastCam.y = self.camera.x, self.camera.y
 end
+
 function SceneInstance:_restoreRows()
     for y in pairs(self._rowsToRestore) do
         buffer:restoreLine(y, self._staticCache)
     end
     self._rowsToRestore = {}
 end
+
 function SceneInstance:_renderEntities(camX, camY, termW, termH)
     if self._zDirty then
         self._sortedEntities = self:select("pos", "sprite")
@@ -5977,29 +7022,38 @@ function SceneInstance:_renderEntities(camX, camY, termW, termH)
         end)
         self._zDirty = false
     end
+
     debug.dynamicCount = #self._sortedEntities
+
     for _, id in ipairs(self._sortedEntities) do
         local p = self:get(id, "pos")
         local s = self:get(id, "sprite")
+
         local anim = self:get(id, "animation")
         local frameIdx = 1
+
         if anim and anim.sequences and anim.state then
             local seq = anim.sequences[anim.state]
             frameIdx = seq and seq[anim.currentFrame or 1] or (anim.currentFrame or 1)
         elseif anim then
             frameIdx = anim.currentFrame or 1
         end
+
         local currentFrame = s and s[frameIdx]
+
         if currentFrame then
             local sx = math.floor(p.x - camX)
             local sy = math.floor(p.y - camY)
             local frameW = s.width or 0
             local frameH = s.height or 0
+
             if sx + frameW >= 1 and sx <= termW and
                sy + frameH >= 1 and sy <= termH then
+
                 local colorOverride = self:get(id, "colorOverride")
                 local charOverride = self:get(id, "charOverride")
                 local bgOverride = self:get(id, "bgOverride")
+
                 if colorOverride or charOverride or bgOverride then
                     for row = 0, frameH - 1 do
                         local ty = math.floor(p.y - camY) + row
@@ -6016,6 +7070,7 @@ function SceneInstance:_renderEntities(camX, camY, termW, termH)
                 else
                     buffer:drawSprite(currentFrame, p.x, p.y, camX, camY)
                 end
+
                 for i = 0, frameH - 1 do
                     local targetY = sy + i
                     if targetY >= 1 and targetY <= termH then
@@ -6026,21 +7081,25 @@ function SceneInstance:_renderEntities(camX, camY, termW, termH)
         end
     end
 end
+
 function SceneInstance:_renderForeground(camX, camY, termW, termH)
     for _, item in ipairs(self._foregroundElements) do
         local s = item.sprite
         local sx = math.floor(item.x - camX)
         local sy = math.floor(item.y - camY)
+
         if s and s[1] and
            sx + s.width >= 1 and sx <= termW and
            sy + s.height >= 1 and sy <= termH then
             buffer:drawSprite(s[1], item.x, item.y, camX, camY)
+
             for i = 0, s.height - 1 do
                 self._rowsToRestore[sy + i] = true
             end
         end
     end
 end
+
 function SceneInstance:_renderDebug()
     if debug.alwaysOnTop then return end
     local stats = string.format(
@@ -6051,10 +7110,12 @@ function SceneInstance:_renderDebug()
         "Entities: %d (Dyn) | %d (Stat)",
         debug.dynamicCount, #self._staticElements
     )
+
     buffer:drawText(1, 1, stats, "0", "f")
     buffer:drawText(1, 2, entInfo, "7", "f")
     self._rowsToRestore[1] = true
     self._rowsToRestore[2] = true
+
     if debug.showLogs then
         local history = logger.getHistory()
         for i, entry in ipairs(history) do
@@ -6063,16 +7124,21 @@ function SceneInstance:_renderDebug()
         end
     end
 end
+
 return Scene
 ]=]
 paths["core.scene"] = "core/scene"
 sources["core.serialization"] = [=[
 
+
 local require = ...
+
 local logger = require("core.logger")
 local loader = require("core.loader")
 local mathUtils = require("core.math")
+
 local Serialization = {}
+
 function Serialization.pack(scene)
     local data = {
         name = scene.name or "Unnamed Scene",
@@ -6081,6 +7147,7 @@ function Serialization.pack(scene)
         statics = {},
         entities = {}
     }
+
     if scene.tilemap then
         data.tilemap = {
             spritePath = scene.tilemap.spritePath,
@@ -6089,6 +7156,7 @@ function Serialization.pack(scene)
             tileProperties = scene.tilemap.tileProperties
         }
     end
+
     for _, item in ipairs(scene._staticElements) do
         table.insert(data.statics, {
             spritePath = item.spritePath,
@@ -6099,9 +7167,11 @@ function Serialization.pack(scene)
             layer = item.layer
         })
     end
+
     for id, _ in pairs(scene._entities) do
         local entData = { id = id, components = {} }
         local signature = scene._tags[id]
+
         for compName, _ in pairs(signature) do
             local comp = scene._store[compName][id]
             if compName == "sprite" then
@@ -6118,8 +7188,10 @@ function Serialization.pack(scene)
         end
         table.insert(data.entities, entData)
     end
+
     return data
 end
+
 function Serialization.save(scene, path)
     local data = Serialization.pack(scene)
     local file = fs.open(path, "w")
@@ -6136,6 +7208,7 @@ function Serialization.save(scene, path)
     logger.info("Scene serialized to " .. path)
     return true
 end
+
 function Serialization.apply(scene, data)
     local toDestroy = {}
     for id in pairs(scene._entities) do
@@ -6144,19 +7217,23 @@ function Serialization.apply(scene, data)
     for _, id in ipairs(toDestroy) do
         scene:despawn(id)
     end
+
     scene._staticElements = {}
     scene._foregroundElements = {}
     scene.tilemap = nil
     scene._spatialGrid = {}
     scene._activeDynamicCells = {}
     scene._staticDirty = true
+
     scene.name = data.name
     scene.camera:set(data.camera.x, data.camera.y)
+
     if data.tilemap and data.tilemap.spritePath then
         local sprite = loader.loadSprite(data.tilemap.spritePath)
         scene:setTilemap(sprite, data.tilemap.data, data.tilemap.solidTiles, data.tilemap.tileProperties)
         scene.tilemap.spritePath = data.tilemap.spritePath
     end
+
     for _, s in ipairs(data.statics) do
         local sprite = s.spritePath and loader.loadSprite(s.spritePath) or nil
         scene:addStatic(sprite, s.x, s.y, {
@@ -6166,11 +7243,13 @@ function Serialization.apply(scene, data)
         })
         scene._staticElements[#scene._staticElements].spritePath = s.spritePath
     end
+
     local idMap = {}
     for _, entData in ipairs(data.entities) do
         local newId = scene:spawn()
         idMap[entData.id] = newId
     end
+
     for _, entData in ipairs(data.entities) do
         local id = idMap[entData.id]
         for compName, compData in pairs(entData.components) do
@@ -6193,18 +7272,31 @@ function Serialization.apply(scene, data)
         end
     end
 end
+
 return Serialization
 ]=]
 paths["core.serialization"] = "core/serialization"
 sources["core.server"] = [=[
 
+
 local require = ...
+
+
 local logger  = require("core.logger")
 local network = require("core.network")
 local buffer  = require("core.buffer")
+
+
+
+
+
 local server = {}
+
 server._emit = function() end
+
+
 local _auth
+
 local _clients = {}
 local _rooms = {}
 local _handlers = {}
@@ -6219,6 +7311,8 @@ local _tickRate = 20
 local _timeout = 30
 local _heartbeat = 5
 local _seqEnabled = false
+
+
 local _con = {
     enabled = false,
     title = "Obsidian Server",
@@ -6231,6 +7325,7 @@ local _con = {
     dirty = true,
     buf = nil,
 }
+
 local CON_LEVEL = {
     info = { fore = "0", prefix = "[INFO ] " },
     warn = { fore = "1", prefix = "[WARN ] " },
@@ -6239,11 +7334,14 @@ local CON_LEVEL = {
     system = { fore = "b", prefix = "[SYS  ] " },
     debug = { fore = "7", prefix = "[DEBUG] " },
 }
+
 local CON_PREFIX_W = 0
+
 local function _conTimestamp()
     local t = os.date("*t")
     return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
 end
+
 local function _wrapText(fullLine, width, indentW)
     if width <= 0 or #fullLine <= width then return { fullLine } end
     local result = {}
@@ -6266,6 +7364,7 @@ local function _wrapText(fullLine, width, indentW)
     end
     return result
 end
+
 local function _rebuildLines(width)
     _con.lines = {}
     for _, entry in ipairs(_con.log) do
@@ -6276,6 +7375,7 @@ local function _rebuildLines(width)
     end
     _con.lastWidth = width
 end
+
 local function _consolePush(text, level)
     level = CON_LEVEL[level] or CON_LEVEL.info
     local entry = {
@@ -6300,11 +7400,14 @@ local function _consolePush(text, level)
     end
     _con.dirty = true
 end
+
 local function _consoleRender()
     if not _con.enabled or not _con.dirty then return end
     _con.dirty = false
+
     local sw, sh = term.getSize()
     if sw == 0 or sh == 0 then return end
+
     if not _con.buf then
         _con.buf = buffer.new(sw, sh)
         _con.lastWidth = sw
@@ -6314,9 +7417,11 @@ local function _consoleRender()
         _con.lastWidth = sw
         _con.lastHeight = sh
     end
+
     if sw ~= _con.lastWidth then
         _rebuildLines(sw)
     end
+
     local buf = _con.buf
     local uptime = ""
     if _con.startTime then
@@ -6328,32 +7433,41 @@ local function _consoleRender()
     local right = string.format("ID:%-3d  %s ", os.getComputerID(), uptime)
     local header = (" " .. _con.title .. string.rep(" ", sw)):sub(1, sw - #right) .. right
     buf:drawLine(1, header, "f", "5")
+
     local proto = _protocol or "(no protocol)"
     local nClients = 0
     for _ in pairs(_clients) do nClients = nClients + 1 end
     local status = string.format(" proto: %-20s  clients: %d", proto, nClients)
     buf:drawLine(sh, status, "0", "8")
+
     local logH = sh - 2
     local startIdx = math.max(1, #_con.lines - logH + 1)
     local row = 2
+
     for i = startIdx, math.min(startIdx + logH - 1, #_con.lines) do
         local line = _con.lines[i]
         buf:drawLine(row, line.text, line.fore, "f")
         row = row + 1
     end
+
     while row < sh do
         buf:drawLine(row, "", "0", "f")
         row = row + 1
     end
+
     buf:present()
 end
+
 function server.showConsole(title)
     _con.enabled = true
     if title then _con.title = title end
 end
+
 function server.log(text, level)
     _consolePush(tostring(text), level or "info")
 end
+
+
 local function makePacket(msgType, data)
     return {
         type = msgType,
@@ -6362,6 +7476,8 @@ local function makePacket(msgType, data)
         timestamp = os.epoch("utc"),
     }
 end
+
+
 function server.getClients()
     local list = {}
     for id in pairs(_clients) do
@@ -6369,36 +7485,44 @@ function server.getClients()
     end
     return list
 end
+
 function server.clientCount()
     local n = 0
     for _ in pairs(_clients) do n = n + 1 end
     return n
 end
+
 function server.isConnected(clientId)
     return _clients[clientId] ~= nil
 end
+
 function server.setMeta(clientId, key, value)
     if _clients[clientId] then
         _clients[clientId].meta[key] = value
     end
 end
+
 function server.getMeta(clientId, key)
     if _clients[clientId] then
         return _clients[clientId].meta[key]
     end
     return nil
 end
+
 local function _removeClient(clientId)
     if not _clients[clientId] then return end
     _clients[clientId] = nil
+
     _auth.sessions[clientId] = nil
     _auth.nonces[clientId] = nil
+
     for roomName, members in pairs(_rooms) do
         members[clientId] = nil
         local count = 0
         for _ in pairs(members) do count = count + 1 end
         if count == 0 then _rooms[roomName] = nil end
     end
+
     if _onDisconnectCb then
         pcall(_onDisconnectCb, clientId)
     end
@@ -6406,21 +7530,27 @@ local function _removeClient(clientId)
     logger.info("Server: Client " .. clientId .. " disconnected")
     _consolePush("Client #" .. clientId .. " disconnected", "warn")
 end
+
 function server.kick(clientId, reason)
     if not _clients[clientId] then return end
     server.send(clientId, "SERVER_KICK", { reason = reason or "Kicked by server" })
     _removeClient(clientId)
 end
+
+
+
 function server.joinRoom(clientId, roomName)
     if not _clients[clientId] then return end
     if not _rooms[roomName] then _rooms[roomName] = {} end
     _rooms[roomName][clientId] = true
 end
+
 function server.leaveRoom(clientId, roomName)
     if _rooms[roomName] then
         _rooms[roomName][clientId] = nil
     end
 end
+
 function server.getRoomClients(roomName)
     local list = {}
     if _rooms[roomName] then
@@ -6430,6 +7560,7 @@ function server.getRoomClients(roomName)
     end
     return list
 end
+
 function server.getClientRooms(clientId)
     local list = {}
     for roomName, members in pairs(_rooms) do
@@ -6439,12 +7570,15 @@ function server.getClientRooms(clientId)
     end
     return list
 end
+
+
 function server.send(clientId, msgType, data)
     if not network.isOpen then return false end
     local pkt = makePacket(msgType, data)
     rednet.send(clientId, pkt, _protocol)
     return true
 end
+
 function server.broadcast(msgType, data, exceptId)
     if not network.isOpen then return end
     local pkt = makePacket(msgType, data)
@@ -6454,6 +7588,7 @@ function server.broadcast(msgType, data, exceptId)
         end
     end
 end
+
 function server.broadcastRoom(roomName, msgType, data, exceptId)
     if not _rooms[roomName] then return end
     local pkt = makePacket(msgType, data)
@@ -6463,15 +7598,20 @@ function server.broadcastRoom(roomName, msgType, data, exceptId)
         end
     end
 end
+
+
 function server.on(msgType, fn)
     _handlers[msgType] = fn
 end
+
 function server.off(msgType)
     _handlers[msgType] = nil
 end
+
 function server.use(fn)
     _middleware[#_middleware + 1] = fn
 end
+
 local function _dispatch(clientId, packet)
     local i = 0
     local function next()
@@ -6493,12 +7633,18 @@ local function _dispatch(clientId, packet)
     end
     next()
 end
+
+
 function server.onConnect(fn)
     _onConnectCb = fn
 end
+
 function server.onDisconnect(fn)
     _onDisconnectCb = fn
 end
+
+
+
 _auth = {
     enabled = false,
     db = nil,
@@ -6507,6 +7653,7 @@ _auth = {
     attempts = {},
     opts = {},
 }
+
 local function _djb2(str)
     local h = 5381
     for i = 1, #str do
@@ -6514,6 +7661,7 @@ local function _djb2(str)
     end
     return tostring(h)
 end
+
 local function _safeProfile(profile)
     local out = {}
     for k, v in pairs(profile) do
@@ -6521,18 +7669,22 @@ local function _safeProfile(profile)
     end
     return out
 end
+
 function server.enableAuth(db, opts)
     assert(db, "server.enableAuth: db must be an Obsidian DB collection")
     opts = opts or {}
     _auth.db = db
     _auth.opts = opts
     _auth.enabled = true
+
     local minNameLen = opts.minNameLen or 3
     local maxNameLen = opts.maxNameLen or 16
+
     _handlers["REGISTER"] = function(clientId, data)
         local name = tostring(data.name or "")
         local passwordHash = tostring(data.passwordHash or "")
         local class = data.class
+
         if #name < minNameLen or #name > maxNameLen then
             server.send(clientId, "REGISTER_FAILED",
                 { message = "Name must be " .. minNameLen .. "-" .. maxNameLen .. " characters." })
@@ -6552,6 +7704,7 @@ function server.enableAuth(db, opts)
             server.send(clientId, "REGISTER_FAILED", { message = "Name already taken." })
             return
         end
+
         local profile = {
             cid = clientId,
             name = name,
@@ -6569,6 +7722,7 @@ function server.enableAuth(db, opts)
         server.send(clientId, "REGISTER_SUCCESS", { profile = _safeProfile(profile) })
         if opts.onRegister then pcall(opts.onRegister, clientId, profile) end
     end
+
     _handlers["LOGIN_CHALLENGE_REQUEST"] = function(clientId, data)
         local now = os.epoch("utc") / 1000
         local att = _auth.attempts[clientId]
@@ -6583,17 +7737,20 @@ function server.enableAuth(db, opts)
         _auth.nonces[clientId] = { nonce = nonce, name = name, expireAt = now + 30 }
         server.send(clientId, "LOGIN_CHALLENGE", { nonce = nonce })
     end
+
     _handlers["LOGIN"] = function(clientId, data)
         local now = os.epoch("utc") / 1000
         local entry = _auth.nonces[clientId]
         local name = tostring(data.name or "")
         local response = tostring(data.response or "")
+
         if not entry or entry.name ~= name or now > entry.expireAt then
             _auth.nonces[clientId] = nil
             server.send(clientId, "LOGIN_FAILED", { message = "Challenge expired. Please try again." })
             return
         end
         _auth.nonces[clientId] = nil
+
         local profile = _auth.db:findOne({ name = name })
         if not profile or _djb2(profile.passwordHash .. entry.nonce) ~= response then
             local att = _auth.attempts[clientId] or { count = 0, resetAt = 0 }
@@ -6608,6 +7765,7 @@ function server.enableAuth(db, opts)
             _consolePush("Auth: Failed login for '" .. name .. "'", "warn")
             return
         end
+
         _auth.attempts[clientId] = nil
         if profile.cid ~= clientId then
             _auth.db:update({ name = name }, { cid = clientId })
@@ -6619,6 +7777,7 @@ function server.enableAuth(db, opts)
         server.send(clientId, "LOGIN_SUCCESS", { profile = _safeProfile(profile) })
         if opts.onLogin then pcall(opts.onLogin, clientId, profile) end
     end
+
     _handlers["LOGOUT"] = function(clientId)
         local profile = _auth.sessions[clientId]
         _auth.sessions[clientId] = nil
@@ -6629,6 +7788,7 @@ function server.enableAuth(db, opts)
         if opts.onLogout then pcall(opts.onLogout, clientId, profile) end
     end
 end
+
 server.auth = {
     isLoggedIn = function(clientId)
         return _auth.sessions[clientId] ~= nil
@@ -6647,25 +7807,34 @@ server.auth = {
         return true
     end,
 }
+
+
+
 function server.onTick(fn)
     _tickCbs[#_tickCbs + 1] = fn
 end
+
 function server.setTickRate(n)
     _tickRate = math.max(1, n)
 end
+
 function server.setTimeout(seconds)
     _timeout = seconds
 end
+
 function server.setHeartbeatInterval(seconds)
     _heartbeat = seconds
 end
+
 function server.enableSequencing()
     _seqEnabled = true
 end
+
 function server.getPing(clientId)
     local c = _clients[clientId]
     return c and c.ping or nil
 end
+
 function server.sendToList(idList, msgType, data)
     if not network.isOpen then return end
     local pkt = makePacket(msgType, data)
@@ -6675,21 +7844,27 @@ function server.sendToList(idList, msgType, data)
         end
     end
 end
+
+
 function server.init(protocol, hostname, side)
     _protocol = protocol
+
     if not network.open(side) then
         logger.error("Server: No modem found!")
         return false
     end
+
     if not network.host(protocol, hostname) then
         logger.error("Server: Failed to host protocol '" .. protocol .. "'")
         return false
     end
+
     _hostname = hostname
     logger.info(string.format("Server: Online | protocol='%s' hostname='%s' id=%d",
         protocol, hostname, os.getComputerID()))
     return true
 end
+
 function server.stop()
     if not _running then return end
     _running = false
@@ -6704,18 +7879,24 @@ function server.stop()
     server._emit("server.stopped")
     logger.info("Server: Stopped")
 end
+
+
 local function _handleRednet(senderId, pkt, proto)
     if proto ~= _protocol then return end
+
     if type(pkt) ~= "table" or not pkt.type then return end
+
     if type(pkt) == "table" and pkt.type == "DISCOVER" and pkt.hostname == _hostname then
         logger.info("Server: DISCOVER from " .. tostring(senderId) .. " — replying")
         rednet.send(senderId, { type = "DISCOVER_REPLY", hostname = _hostname,
                                 serverId = os.getComputerID() }, proto)
         return
     end
+
     if _clients[senderId] then
         _clients[senderId].lastSeen = os.epoch("utc") / 1000
     end
+
     if pkt.type == "CONNECT_REQUEST" then
         _clients[senderId] = {
             id = senderId,
@@ -6730,22 +7911,27 @@ local function _handleRednet(senderId, pkt, proto)
             serverId = os.getComputerID(),
             serverTime = os.epoch("utc"),
         }), _protocol)
+
         if _onConnectCb then pcall(_onConnectCb, senderId) end
         server._emit("server.clientConnect", senderId)
         logger.info("Server: Client " .. senderId .. " connected")
         _consolePush("Client #" .. senderId .. " connected", "success")
         return
     end
+
     if pkt.type == "CLIENT_LEAVE" then
         _removeClient(senderId)
         return
     end
+
     if not _clients[senderId] then return end
+
     if pkt.type == "PING" then
         local pingTime = pkt.t or (type(pkt.data) == "table" and pkt.data.t)
         rednet.send(senderId, makePacket("PONG", { t=pingTime }), _protocol)
         return
     end
+
     if pkt.type == "PONG" then
         local c = _clients[senderId]
         if c and c.heartbeatSent then
@@ -6759,14 +7945,19 @@ local function _handleRednet(senderId, pkt, proto)
         if pkt.seq <= c.lastSeq then return end
         c.lastSeq = pkt.seq
     end
+
     _dispatch(senderId, pkt)
 end
+
+
 local _tickTimer = nil
 local _lastTick  = 0
+
 local function _runTick()
     local now = os.epoch("utc") / 1000
     local dt = now - _lastTick
     _lastTick = now
+
     for id, info in pairs(_clients) do
         if _timeout > 0 and now - info.lastSeen > _timeout then
             logger.warn("Server: Client " .. id .. " timed out")
@@ -6778,6 +7969,7 @@ local function _runTick()
             rednet.send(id, makePacket("PING", { t = info.heartbeatSent }), _protocol)
         end
     end
+
     for _, fn in ipairs(_tickCbs) do
         local ok, err = pcall(fn, dt)
         if not ok then
@@ -6785,10 +7977,12 @@ local function _runTick()
             _consolePush("Tick error: " .. tostring(err), "error")
         end
     end
+
     _con.dirty = true
     _consoleRender()
     _tickTimer = os.startTimer(1 / _tickRate)
 end
+
 function server.processEvent(rawEvent)
     local evName = rawEvent[1]
     if evName == "rednet_message" then
@@ -6799,6 +7993,7 @@ function server.processEvent(rawEvent)
         _runTick()
     end
 end
+
 function server.start()
     if not _protocol then
         logger.error("Server: Call server.init() before server.start()")
@@ -6819,6 +8014,7 @@ function server.start()
     end
     return true
 end
+
 function server.run()
     if not server.start() then return end
     while _running do
@@ -6831,20 +8027,27 @@ function server.run()
         server.processEvent(rawEvent)
     end
 end
+
 return server
 ]=]
 paths["core.server"] = "core/server"
 sources["core.storage"] = [=[
 
+
+
 local storage = {}
+
 local SAVE_DIR = "saves/"
+
 function storage.setDir(path)
     SAVE_DIR = path
 end
+
 function storage.save(name, data)
     if not fs.exists(SAVE_DIR) then
         fs.makeDir(SAVE_DIR)
     end
+
     local path = fs.combine(SAVE_DIR, name .. ".dat")
     local file = fs.open(path, "w")
     if not file then return false, "Could not open file for writing: " .. path end
@@ -6854,9 +8057,11 @@ function storage.save(name, data)
     file.close()
     return ok, err
 end
+
 function storage.load(name)
     local path = fs.combine(SAVE_DIR, name .. ".dat")
     if not fs.exists(path) then return nil, "Save file does not exist: " .. path end
+
     local file = fs.open(path, "r")
     if not file then return nil, "Could not open file for reading: " .. path end
     local raw = file.readAll()
@@ -6865,6 +8070,7 @@ function storage.load(name)
     if not ok then return nil, "Failed to deserialize save data: " .. tostring(data) end
     return data, nil
 end
+
 function storage.delete(name)
     local path = fs.combine(SAVE_DIR, name .. ".dat")
     if fs.exists(path) then
@@ -6873,6 +8079,7 @@ function storage.delete(name)
     end
     return false
 end
+
 function storage.list()
     if not fs.exists(SAVE_DIR) then return {} end
     local names = {}
@@ -6883,45 +8090,59 @@ function storage.list()
     end
     return names
 end
+
 return storage
 ]=]
 paths["core.storage"] = "core/storage"
 sources["core.thread"] = [=[
 
+
 local require = ...
+
 local logger = require("core.logger")
+
+
 local ThreadModule = {}
 ThreadModule.errorHandler = nil
+
 local threads = {}
 local nextId  = 1
+
 local function tracebackHandler(e)
     local d = _G and _G.debug
     return (d and d.traceback) and d.traceback(tostring(e), 2) or tostring(e)
 end
+
 local thread = {}
+
 function thread:stop()
     return ThreadModule.stop(self)
 end
+
 function thread:isAlive()
     local id = type(self) == "table" and self.id or nil
     if not id then return false end
     local entry = threads[id]
     return entry ~= nil and coroutine.status(entry.co) ~= "dead"
 end
+
 function thread:getStatus()
     local id = type(self) == "table" and self.id or nil
     if not id then return nil end
     local entry = threads[id]
     return entry and entry.status or nil
 end
+
 function thread:yield(eventFilter)
     return ThreadModule.yield(eventFilter)
 end
+
 local function createHandle(id)
     local h = { id = id }
     setmetatable(h, { __index = thread })
     return h
 end
+
 function ThreadModule.start(fn)
     local co = coroutine.create(function(...)
         local ok, err = xpcall(fn, tracebackHandler, ...)
@@ -6939,6 +8160,7 @@ function ThreadModule.start(fn)
     threads[id] = { id = id, co = co, status = "running", filter = nil, handle = handle }
     return handle
 end
+
 function ThreadModule.stop(idOrHandle)
     local id = idOrHandle
     if type(idOrHandle) == "table" and idOrHandle.id then id = idOrHandle.id end
@@ -6949,11 +8171,13 @@ function ThreadModule.stop(idOrHandle)
     end
     return false
 end
+
 function ThreadModule.getAll()
     local copy = {}
     for id, t in pairs(threads) do copy[id] = t end
     return copy
 end
+
 function ThreadModule.count()
     local n = 0
     for _, t in pairs(threads) do
@@ -6961,17 +8185,21 @@ function ThreadModule.count()
     end
     return n
 end
+
 function ThreadModule.reset()
     threads = {}
     nextId  = 1
 end
+
 function ThreadModule.yield(eventFilter)
     return coroutine.yield(eventFilter)
 end
+
 function ThreadModule.update(...)
     local event = { ... }
     local snapshot = {}
     for id, t in pairs(threads) do snapshot[id] = t end
+
     for id, t in pairs(snapshot) do
         if coroutine.status(t.co) ~= "dead" then
             if t.filter == event[1] or t.filter == nil then
@@ -6992,16 +8220,22 @@ function ThreadModule.update(...)
         end
     end
 end
+
 return ThreadModule
 ]=]
 paths["core.thread"] = "core/thread"
 sources["core.tilemap"] = [=[
 
+
 local require = ...
+
 local loader  = require("core.loader")
 local storage = require("core.storage")
+
 local tilemap = {}
+
 local TilemapModule = {}
+
 function TilemapModule.new(opts)
     opts = opts or {}
     local self = {
@@ -7016,6 +8250,8 @@ function TilemapModule.new(opts)
     setmetatable(self, { __index = tilemap })
     return self
 end
+
+
 function tilemap:defineTile(id, opts)
     assert(type(id) == "number" and id > 0, "tilemap:defineTile id must be a positive number")
     opts = opts or {}
@@ -7027,9 +8263,12 @@ function tilemap:defineTile(id, opts)
         hR = opts.hR or 0,
     }
 end
+
 function tilemap:getTileDef(id)
     return self._defs[id]
 end
+
+
 function tilemap:addLayer(name, opts)
     assert(type(name) == "string", "layer name must be a string")
     assert(not self._layerMap[name], "layer '" .. name .. "' already exists")
@@ -7045,6 +8284,7 @@ function tilemap:addLayer(name, opts)
     self._layerMap[name] = layer
     return layer
 end
+
 function tilemap:removeLayer(name)
     self._layerMap[name] = nil
     for i = #self._layers, 1, -1 do
@@ -7055,9 +8295,12 @@ function tilemap:removeLayer(name)
     end
     return false
 end
+
 function tilemap:getLayer(name)
     return self._layerMap[name]
 end
+
+
 function tilemap:setTile(layerName, tx, ty, tileId)
     local layer = self._layerMap[layerName]
     assert(layer, "tilemap:setTile: unknown layer '" .. tostring(layerName) .. "'")
@@ -7065,11 +8308,13 @@ function tilemap:setTile(layerName, tx, ty, tileId)
     layer.data[ty][tx] = (tileId and tileId > 0) and tileId or nil
     self:_markDirty()
 end
+
 function tilemap:getTile(layerName, tx, ty)
     local layer = self._layerMap[layerName]
     if not layer then return nil end
     return layer.data[ty] and layer.data[ty][tx] or nil
 end
+
 function tilemap:fill(layerName, tileId, x1, y1, x2, y2)
     local layer = self._layerMap[layerName]
     assert(layer, "tilemap:fill: unknown layer '" .. tostring(layerName) .. "'")
@@ -7089,6 +8334,7 @@ function tilemap:fill(layerName, tileId, x1, y1, x2, y2)
     end
     self:_markDirty()
 end
+
 function tilemap:copyRect(srcLayer, dstLayer, sx1, sy1, sx2, sy2, dx, dy)
     local src = self._layerMap[srcLayer]
     local dst = self._layerMap[dstLayer]
@@ -7105,14 +8351,18 @@ function tilemap:copyRect(srcLayer, dstLayer, sx1, sy1, sx2, sy2, dx, dy)
     end
     self:_markDirty()
 end
+
+
 function tilemap:worldToTile(wx, wy)
     return math.floor(wx / self.tileW) + 1,
            math.floor(wy / self.tileH) + 1
 end
+
 function tilemap:tileToWorld(tx, ty)
     return (tx - 1) * self.tileW,
            (ty - 1) * self.tileH
 end
+
 function tilemap:forArea(wx1, wy1, wx2, wy2, fn)
     local startX = math.floor(wx1 / self.tileW) + 1
     local startY = math.floor(wy1 / self.tileH) + 1
@@ -7129,6 +8379,7 @@ function tilemap:forArea(wx1, wy1, wx2, wy2, fn)
         end
     end
 end
+
 function tilemap:getNeighbors(layerName, tx, ty)
     local layer = self._layerMap[layerName]
     if not layer then return {} end
@@ -7141,8 +8392,11 @@ function tilemap:getNeighbors(layerName, tx, ty)
     end
     return result
 end
+
+
 function tilemap:attach(scene)
     self._scene = scene
+
     for _, def in pairs(self._defs) do
         if def.spritePath and not self._sprites[def.spritePath] then
             local spr = loader.loadSprite(def.spritePath)
@@ -7151,8 +8405,10 @@ function tilemap:attach(scene)
             end
         end
     end
+
     self:_buildSceneTilemap(scene)
 end
+
 function tilemap:detach()
     if self._scene then
         self._scene.tilemap = nil
@@ -7160,6 +8416,8 @@ function tilemap:detach()
         self._scene = nil
     end
 end
+
+
 function tilemap:save(name)
     local payload = {
         tileW  = self.tileW,
@@ -7186,14 +8444,18 @@ function tilemap:save(name)
     end
     storage.save(name, payload)
 end
+
 function tilemap:load(name)
     local payload = storage.load(name)
     if not payload then return nil, "tilemap: no saved data for key '" .. name .. "'" end
+
     self.tileW = payload.tileW or self.tileW
     self.tileH = payload.tileH or self.tileH
+
     for id, def in pairs(payload.defs or {}) do
         self._defs[tonumber(id)] = def
     end
+
     self._layers   = {}
     self._layerMap = {}
     for _, saved in ipairs(payload.layers or {}) do
@@ -7209,16 +8471,20 @@ function tilemap:load(name)
     table.sort(self._layers, function(a, b) return a.z < b.z end)
     return self
 end
+
+
 function tilemap:_markDirty()
     if self._scene then
         self:_buildSceneTilemap(self._scene)
         self._scene._staticDirty = true
     end
 end
+
 function tilemap:_buildSceneTilemap(scene)
     local spriteTable = {}
     local solidTiles = {}
     local tileProperties = {}
+
     for id, def in pairs(self._defs) do
         if def.spritePath then
             local spr = self._sprites[def.spritePath]
@@ -7237,6 +8503,7 @@ function tilemap:_buildSceneTilemap(scene)
             }
         end
     end
+
     local collisionData = {}
     for _, layer in ipairs(self._layers) do
         if layer.collision then
@@ -7244,6 +8511,7 @@ function tilemap:_buildSceneTilemap(scene)
             break
         end
     end
+
     scene.tilemap = {
         layers = self._layers,
         data = collisionData,
@@ -7255,16 +8523,24 @@ function tilemap:_buildSceneTilemap(scene)
         _map = self,
     }
 end
+
 return TilemapModule
 ]=]
 paths["core.tilemap"] = "core/tilemap"
 sources["core.timer"] = [=[
 
+
 local require = ...
+
+
 local logger = require("core.logger")
+
+
+
 local TimerModule = {
     _active = {}
 }
+
 local function createHandle()
     local handle = {}
     local methods = {
@@ -7277,6 +8553,7 @@ local function createHandle()
     }
     return setmetatable(handle, { __index = methods })
 end
+
 function TimerModule.after(delay, callback)
     if type(delay) ~= "number" or delay < 0 then
         logger.error("Timer: Invalid delay (must be non-negative number)")
@@ -7286,7 +8563,9 @@ function TimerModule.after(delay, callback)
         logger.error("Timer: Invalid callback (must be function)")
         return createHandle()
     end
+
     local handle = createHandle()
+
     table.insert(TimerModule._active, {
         handle = handle,
         elapsed = 0,
@@ -7297,8 +8576,10 @@ function TimerModule.after(delay, callback)
         firedCount = 0,
         paused = false,
     })
+    
     return handle
 end
+
 function TimerModule.every(interval, callback, maxTimes)
     if type(interval) ~= "number" or interval <= 0 then
         logger.error("Timer: Invalid interval (must be positive number)")
@@ -7308,7 +8589,9 @@ function TimerModule.every(interval, callback, maxTimes)
         logger.error("Timer: Invalid callback (must be function)")
         return createHandle()
     end
+
     local handle = createHandle()
+
     table.insert(TimerModule._active, {
         handle = handle,
         elapsed = 0,
@@ -7319,11 +8602,14 @@ function TimerModule.every(interval, callback, maxTimes)
         firedCount = 0,
         paused = false,
     })
+
     return handle
 end
+
 function TimerModule.nextFrame(callback)
     return TimerModule.after(0, callback)
 end
+
 function TimerModule.cancel(handle)
     for i = #TimerModule._active, 1, -1 do
         if TimerModule._active[i].handle == handle then
@@ -7333,6 +8619,7 @@ function TimerModule.cancel(handle)
     end
     return false
 end
+
 function TimerModule.pause(handle)
     for _, timer in ipairs(TimerModule._active) do
         if timer.handle == handle then
@@ -7342,6 +8629,7 @@ function TimerModule.pause(handle)
     end
     return false
 end
+
 function TimerModule.resume(handle)
     for _, timer in ipairs(TimerModule._active) do
         if timer.handle == handle then
@@ -7351,15 +8639,19 @@ function TimerModule.resume(handle)
     end
     return false
 end
+
 function TimerModule.pauseAll()
     for _, timer in ipairs(TimerModule._active) do timer.paused = true end
 end
+
 function TimerModule.resumeAll()
     for _, timer in ipairs(TimerModule._active) do timer.paused = false end
 end
+
 function TimerModule.cancelAll()
     TimerModule._active = {}
 end
+
 function TimerModule.isActive(handle)
     for _, timer in ipairs(TimerModule._active) do
         if timer.handle == handle then
@@ -7368,9 +8660,11 @@ function TimerModule.isActive(handle)
     end
     return false
 end
+
 function TimerModule.count()
     return #TimerModule._active
 end
+
 function TimerModule.getRemaining(handle)
     for _, timer in ipairs(TimerModule._active) do
         if timer.handle == handle then
@@ -7379,6 +8673,7 @@ function TimerModule.getRemaining(handle)
     end
     return nil
 end
+
 function TimerModule.getFiredCount(handle)
     for _, timer in ipairs(TimerModule._active) do
         if timer.handle == handle then
@@ -7387,6 +8682,7 @@ function TimerModule.getFiredCount(handle)
     end
     return nil
 end
+
 function TimerModule.update(dt)
     for i = #TimerModule._active, 1, -1 do
         local timer = TimerModule._active[i]
@@ -7395,11 +8691,12 @@ function TimerModule.update(dt)
             if timer.elapsed >= timer.interval then
                 timer.elapsed = timer.elapsed - timer.interval
                 timer.firedCount = timer.firedCount + 1
+
                 local ok, err = pcall(timer.callback)
                 if not ok then
                     logger.error("Timer: Callback error - " .. tostring(err))
                     table.remove(TimerModule._active, i)
-                elseif not timer.repeating or
+                elseif not timer.repeating or 
                        (timer.maxTimes ~= math.huge and timer.firedCount >= timer.maxTimes) then
                     table.remove(TimerModule._active, i)
                 end
@@ -7407,6 +8704,7 @@ function TimerModule.update(dt)
         end
     end
 end
+
 function TimerModule.getDebugInfo()
     local info = {}
     for _, timer in ipairs(TimerModule._active) do
@@ -7420,64 +8718,87 @@ function TimerModule.getDebugInfo()
     end
     return info
 end
+
 return TimerModule
 ]=]
 paths["core.timer"] = "core/timer"
 sources["core.tween"] = [=[
 
+
 local require = ...
+
+
 local logger = require("core.logger")
+
+
+
 local TweenModule = {
     _active = {},
     easing = {}
 }
+
+
 TweenModule.easing.linear = function(t) return t end
+
 TweenModule.easing.quadIn = function(t)
     return t * t
 end
+
 TweenModule.easing.quadInOut = function(t)
     return t < 0.5 and 2 * t * t or -1 + (4 - 2 * t) * t
 end
+
 TweenModule.easing.sineIn = function(t)
     return 1 - math.cos((t * math.pi) / 2)
 end
+
 TweenModule.easing.sineOut = function(t)
     return math.sin((t * math.pi) / 2)
 end
+
 TweenModule.easing.sineInOut = function(t)
     return -(math.cos(math.pi * t) - 1) / 2
 end
+
 TweenModule.easing.cubicIn = function(t)
     return t * t * t
 end
+
 TweenModule.easing.cubicOut = function(t)
     local u = t - 1
     return u * u * u + 1
 end
+
 TweenModule.easing.cubicInOut = function(t)
     return t < 0.5 and 4 * t * t * t or 1 - (-2 * t + 2) ^ 3 / 2
 end
+
 TweenModule.easing.expoIn = function(t)
     return t == 0 and 0 or 2 ^ (10 * t - 10)
 end
+
 TweenModule.easing.expoOut = function(t)
     return t == 1 and 1 or 1 - 2 ^ (-10 * t)
 end
+
 TweenModule.easing.expoInOut = function(t)
     if t == 0 then return 0 end
     if t == 1 then return 1 end
     return t < 0.5 and 2 ^ (20 * t - 10) / 2 or (2 - 2 ^ (-20 * t + 10)) / 2
 end
+
 TweenModule.easing.backIn = function(t)
     local c1 = 1.70158
     local c3 = c1 + 1
     return c3 * t * t * t - c1 * t * t
 end
+
 TweenModule.easing.backOut = function(t)
     local c1 = 1.70158
     local c3 = c1 + 1
     return 1 + c3 * (t - 1) ^ 3 + c1 * (t - 1) ^ 2
 end
+
 TweenModule.easing.backInOut = function(t)
     local c1 = 1.70158
     local c2 = c1 * 1.525
@@ -7485,18 +8806,21 @@ TweenModule.easing.backInOut = function(t)
         and (2 * t) ^ 2 * ((c2 + 1) * 2 * t - c2) / 2
         or ((2 * t - 2) ^ 2 * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2
 end
+
 TweenModule.easing.elasticIn = function(t)
     local c4 = (2 * math.pi) / 3
     if t == 0 then return 0 end
     if t == 1 then return 1 end
     return -(2 ^ (10 * t - 10)) * math.sin((t * 10 - 10.75) * c4)
 end
+
 TweenModule.easing.elasticOut = function(t)
     local c4 = (2 * math.pi) / 3
     if t == 0 then return 0 end
     if t == 1 then return 1 end
     return 2 ^ (-10 * t) * math.sin((t * 10 - 0.75) * c4) + 1
 end
+
 TweenModule.easing.elasticInOut = function(t)
     local c5 = (2 * math.pi) / 4.5
     if t == 0 then return 0 end
@@ -7505,6 +8829,7 @@ TweenModule.easing.elasticInOut = function(t)
         and -(2 ^ (20 * t - 10) * math.sin((20 * t - 11.125) * c5)) / 2
         or (2 ^ (-20 * t + 10) * math.sin((20 * t - 11.125) * c5)) / 2 + 1
 end
+
 TweenModule.easing.bounceOut = function(t)
     local n1, d1 = 7.5625, 2.75
     if t < 1 / d1 then
@@ -7520,14 +8845,17 @@ TweenModule.easing.bounceOut = function(t)
         return n1 * t * t + 0.984375
     end
 end
+
 TweenModule.easing.bounceIn = function(t)
     return 1 - TweenModule.easing.bounceOut(1 - t)
 end
+
 TweenModule.easing.bounceInOut = function(t)
     return t < 0.5
         and (1 - TweenModule.easing.bounceOut(1 - 2 * t)) / 2
         or (1 + TweenModule.easing.bounceOut(2 * t - 1)) / 2
 end
+
 local function findTweenByHandle(handle)
     for _, tween in ipairs(TweenModule._active) do
         if tween.handle == handle then
@@ -7536,28 +8864,37 @@ local function findTweenByHandle(handle)
     end
     return nil
 end
+
 local handle_methods = {}
+
 function handle_methods:pause()
     return TweenModule.pause(self)
 end
+
 function handle_methods:resume()
     return TweenModule.resume(self)
 end
+
 function handle_methods:cancel()
     return TweenModule.cancel(self)
 end
+
 function handle_methods:complete()
     return TweenModule.complete(self)
 end
+
 function handle_methods:isActive()
     return TweenModule.isActive(self)
 end
+
 function handle_methods:isPaused()
     return TweenModule.isPaused(self)
 end
+
 function handle_methods:getProgress()
     return TweenModule.getProgress(self)
 end
+
 function handle_methods:seek(progress)
     if type(progress) ~= "number" then return false end
     local tween = findTweenByHandle(self)
@@ -7574,11 +8911,14 @@ function handle_methods:seek(progress)
     end
     return true
 end
+
 local function createHandle()
     local h = {}
     setmetatable(h, { __index = handle_methods })
     return h
 end
+
+
 function TweenModule.to(target, duration, properties, easingFunc, onComplete)
     if type(target) ~= "table" then
         logger.error("Tween: Target must be a table")
@@ -7588,11 +8928,14 @@ function TweenModule.to(target, duration, properties, easingFunc, onComplete)
         logger.error("Tween: Properties must be a table")
         return createHandle()
     end
+
     local options = type(easingFunc) == "table" and easingFunc or {
         easing = easingFunc,
         onComplete = onComplete
     }
+
     local handle = createHandle()
+
     local startValues = {}
     for key, endValue in pairs(properties) do
         if type(target[key]) == "number" then
@@ -7601,6 +8944,7 @@ function TweenModule.to(target, duration, properties, easingFunc, onComplete)
             logger.warn("Tween: Property '" .. tostring(key) .. "' is not a number, skipping")
         end
     end
+
     local tween = {
         handle = handle,
         target = target,
@@ -7616,18 +8960,24 @@ function TweenModule.to(target, duration, properties, easingFunc, onComplete)
         paused = false,
         _isReversing = false,
     }
+
     table.insert(TweenModule._active, tween)
     return handle
 end
+
 function TweenModule.from(target, duration, fromProperties, options)
     options = options or {}
+
     local currentValues = {}
     for key, startValue in pairs(fromProperties) do
         currentValues[key] = target[key]
         target[key] = startValue
     end
+
     return TweenModule.to(target, duration, currentValues, options)
 end
+
+
 function TweenModule.pause(handle)
     for _, tween in ipairs(TweenModule._active) do
         if tween.handle == handle then
@@ -7637,6 +8987,7 @@ function TweenModule.pause(handle)
     end
     return false
 end
+
 function TweenModule.resume(handle)
     for _, tween in ipairs(TweenModule._active) do
         if tween.handle == handle then
@@ -7646,6 +8997,7 @@ function TweenModule.resume(handle)
     end
     return false
 end
+
 function TweenModule.cancel(handle)
     for i = #TweenModule._active, 1, -1 do
         if TweenModule._active[i].handle == handle then
@@ -7655,6 +9007,7 @@ function TweenModule.cancel(handle)
     end
     return false
 end
+
 function TweenModule.stop(target)
     local removed = 0
     for i = #TweenModule._active, 1, -1 do
@@ -7665,9 +9018,11 @@ function TweenModule.stop(target)
     end
     return removed
 end
+
 function TweenModule.stopAll()
     TweenModule._active = {}
 end
+
 function TweenModule.complete(handle)
     for i = #TweenModule._active, 1, -1 do
         local tween = TweenModule._active[i]
@@ -7675,6 +9030,7 @@ function TweenModule.complete(handle)
             for key, endValue in pairs(tween.endValues) do
                 tween.target[key] = endValue
             end
+
             local callback = tween.onComplete
             table.remove(TweenModule._active, i)
             if callback then
@@ -7685,11 +9041,12 @@ function TweenModule.complete(handle)
     end
     return false
 end
+
 function TweenModule.seek(handle, progress)
     local tween = findTweenByHandle(handle)
     if not tween or type(progress) ~= "number" then return false end
     progress = math.max(0, math.min(1, progress))
-    tween.elapsed = tween.delay + progress * tween.duration
+    tween.elapsed = tween.delay + progress * tween.duration 
     local effectiveElapsed = math.max(0, tween.elapsed - tween.delay)
     local p = math.min(1, effectiveElapsed / tween.duration)
     local alpha = tween.easing(p)
@@ -7700,6 +9057,7 @@ function TweenModule.seek(handle, progress)
     end
     return true
 end
+
 function TweenModule.getTweensForTarget(target)
     local out = {}
     for _, tween in ipairs(TweenModule._active) do
@@ -7709,9 +9067,12 @@ function TweenModule.getTweensForTarget(target)
     end
     return out
 end
+
+
 function TweenModule.count()
     return #TweenModule._active
 end
+
 function TweenModule.isActive(handle)
     for _, tween in ipairs(TweenModule._active) do
         if tween.handle == handle then
@@ -7720,6 +9081,7 @@ function TweenModule.isActive(handle)
     end
     return false
 end
+
 function TweenModule.isPaused(handle)
     for _, tween in ipairs(TweenModule._active) do
         if tween.handle == handle then
@@ -7728,6 +9090,7 @@ function TweenModule.isPaused(handle)
     end
     return false
 end
+
 function TweenModule.getProgress(handle)
     for _, tween in ipairs(TweenModule._active) do
         if tween.handle == handle then
@@ -7737,6 +9100,8 @@ function TweenModule.getProgress(handle)
     end
     return nil
 end
+
+
 function TweenModule.update(dt)
     for i = #TweenModule._active, 1, -1 do
         local tween = TweenModule._active[i]
@@ -7746,12 +9111,14 @@ function TweenModule.update(dt)
             if effectiveElapsed >= 0 then
                 local progress = math.min(1, effectiveElapsed / tween.duration)
                 local alpha = tween.easing(progress)
+
                 for key, endValue in pairs(tween.endValues) do
                     if tween.startValues[key] then
                         tween.target[key] = tween.startValues[key] +
                                            (endValue - tween.startValues[key]) * alpha
                     end
                 end
+
                 if progress >= 1 then
                     if tween.pingpong then
                         for key, endValue in pairs(tween.endValues) do
@@ -7775,6 +9142,7 @@ function TweenModule.update(dt)
         end
     end
 end
+
 function TweenModule.getDebugInfo()
     local info = {}
     for _, tween in ipairs(TweenModule._active) do
@@ -7790,19 +9158,24 @@ function TweenModule.getDebugInfo()
     end
     return info
 end
+
 return TweenModule
 ]=]
 paths["core.tween"] = "core/tween"
 sources["core.ui.element"] = [=[
 
+
 local M = {}
+
 M.ELEMENT_FIELDS = {
     x=true, y=true, z=true, w=true, h=true,
     visible=true, sprite=true, disabled=true,
     fore=true, back=true, borderColor=true, anchor=true, interactive=true,
     borderTop=true, borderBottom=true, borderLeft=true, borderRight=true,
 }
+
 M.DIRTY_FIELDS = { z=true, sprite=true, w=true, h=true }
+
 function M.wrapText(text, maxW)
     local lines = {}
     for para in (tostring(text or "") .. "\n"):gmatch("([^\n]*)\n") do
@@ -7829,6 +9202,7 @@ function M.wrapText(text, maxW)
     end
     return lines
 end
+
 local function resolveBorders(cfg)
     local def = cfg.border ~= false
     return
@@ -7837,6 +9211,7 @@ local function resolveBorders(cfg)
         cfg.borderLeft   ~= nil and cfg.borderLeft   or def,
         cfg.borderRight  ~= nil and cfg.borderRight  or def
 end
+
 function M.make(name, type_, x, y, config)
     local cfg = config or {}
     local bTop, bBot, bLeft, bRight = resolveBorders(cfg)
@@ -7874,6 +9249,7 @@ function M.make(name, type_, x, y, config)
     end
     return el
 end
+
 function M.makeContainer(name, x, y, w, h, config)
     local cfg = config or {}
     local bTop, bBot, bLeft, bRight = resolveBorders(cfg)
@@ -7903,12 +9279,16 @@ function M.makeContainer(name, x, y, w, h, config)
         scrollOffset   = 0,
     }
 end
+
 return M
 ]=]
 paths["core.ui.element"] = "core/ui/element"
 sources["core.ui.events"] = [=[
 
+
 local events = {}
+
+
 local function sliderValue(el, mx, ex)
     local relX = math.max(0, math.min(el.w - 1, mx - ex))
     local sMin = el.config.min  or 0
@@ -7918,11 +9298,14 @@ local function sliderValue(el, mx, ex)
     local val  = math.floor(raw / step + 0.5) * step
     return math.max(sMin, math.min(sMax, val))
 end
+
 local function hitTest(ctx, mx, my, ox, oy)
     for i = #ctx.sorted, 1, -1 do
         local el = ctx.sorted[i]
         if not el.visible then goto next end
+
         local ex, ey = ctx:getAbsolutePos(el, ox, oy)
+
         if el.type == "container" then
             if mx >= ex and mx < ex + el.w and my >= ey and my < ey + el.h then
                 if el.childrenDirty then
@@ -7967,12 +9350,17 @@ local function hitTest(ctx, mx, my, ox, oy)
     end
     return nil, 0, 0
 end
+
+
 function events.handle(ctx, buf, event, ox, oy)
     local eventType = event[1]
+
     if eventType == "mouse_click" or eventType == "mouse_drag" then
         local mx, my = event[3], event[4]
+
         if ctx.dirty then ctx:_sort() end
         local hit, hitAbsX, hitAbsY = hitTest(ctx, mx, my, ox, oy)
+
         if eventType == "mouse_click" then
             ctx.focusedElement = (hit and hit.type == "input") and hit or nil
             for _, el in pairs(ctx.elements) do
@@ -7983,12 +9371,14 @@ function events.handle(ctx, buf, event, ox, oy)
                     end
                 end
             end
+
             if hit and hit.interactive and not hit.disabled then
                 if hit.type == "checkbox" then
                     hit.config.checked = not hit.config.checked
                     if hit.config.onChanged then hit.config.onChanged(hit.config.checked) end
                     return true
                 end
+
                 if hit.type == "dropdown" then
                     if hit.isOpen then
                         local relY = my - hitAbsY - hit.h
@@ -8005,6 +9395,7 @@ function events.handle(ctx, buf, event, ox, oy)
                     end
                     return true
                 end
+
                 if hit.type == "list" then
                     local relY    = my - hitAbsY
                     local itemIdx = (hit.config.scrollOffset or 0) + relY + 1
@@ -8016,16 +9407,19 @@ function events.handle(ctx, buf, event, ox, oy)
                     end
                     return true
                 end
+
                 if hit.type == "slider" then
                     local val = sliderValue(hit, mx, hitAbsX)
                     hit.config.value = val
                     if hit.config.onChanged then hit.config.onChanged(val) end
                 end
+
                 ctx.pressedElement = hit
                 ctx.pressedAbsX    = hitAbsX
                 ctx.pressedAbsY    = hitAbsY
                 return true
             end
+
         elseif eventType == "mouse_drag" then
             if ctx.pressedElement and ctx.pressedElement.type == "slider" then
                 local el  = ctx.pressedElement
@@ -8035,11 +9429,13 @@ function events.handle(ctx, buf, event, ox, oy)
                 return true
             end
         end
+
     elseif eventType == "mouse_up" then
         if ctx.pressedElement then
             local el     = ctx.pressedElement
             local ex, ey = ctx.pressedAbsX or 0, ctx.pressedAbsY or 0
             local mx, my = event[3], event[4]
+
             if el.type == "slider" then
                 local val = sliderValue(el, mx, ex)
                 el.config.value = val
@@ -8049,11 +9445,13 @@ function events.handle(ctx, buf, event, ox, oy)
                     el.config.onClick(event[2])
                 end
             end
+
             ctx.pressedElement = nil
             ctx.pressedAbsX    = nil
             ctx.pressedAbsY    = nil
             return true
         end
+
     elseif eventType == "char" then
         if ctx.focusedElement and ctx.focusedElement.type == "input" then
             local el = ctx.focusedElement
@@ -8061,6 +9459,7 @@ function events.handle(ctx, buf, event, ox, oy)
             if el.config.onChange then el.config.onChange(el.config.text) end
             return true
         end
+
     elseif eventType == "key" then
         if ctx.focusedElement and ctx.focusedElement.type == "input" then
             local el  = ctx.focusedElement
@@ -8074,6 +9473,7 @@ function events.handle(ctx, buf, event, ox, oy)
             end
             return true
         end
+
     elseif eventType == "mouse_scroll" then
         local dir, mx, my = event[2], event[3], event[4]
         if ctx.dirty then ctx:_sort() end
@@ -8113,20 +9513,29 @@ function events.handle(ctx, buf, event, ox, oy)
             end
         end
     end
+
     return false
 end
+
 return events
 ]=]
 paths["core.ui.events"] = "core/ui/events"
 sources["core.ui"] = [=[
 
+
 local require = ...
+
 local element = require("core.ui.element")
 local render  = require("core.ui.render")
 local events  = require("core.ui.events")
+
 local UI = {}
+
+
+
 function UI.new(buf)
     assert(buf, "UI.new: a Buffer instance is required")
+
     local ctx = {
         buf            = buf,
         elements       = {},
@@ -8137,20 +9546,26 @@ function UI.new(buf)
         pressedAbsY    = nil,
         focusedElement = nil,
     }
+
+
     function ctx:_sort()
         self.sorted = {}
         for _, el in pairs(self.elements) do table.insert(self.sorted, el) end
         table.sort(self.sorted, function(a, b) return a.z < b.z end)
         self.dirty = false
     end
+
     function ctx:_insert(el)
         self.elements[el.name] = el
         self.dirty = true
         return el
     end
+
+
     function ctx:add(name, type_, x, y, config)
         return self:_insert(element.make(name, type_, x, y, config))
     end
+
     function ctx:button(name, x, y, config)   return self:add(name, "button",   x, y, config) end
     function ctx:text(name, x, y, config)     return self:add(name, "text",     x, y, config) end
     function ctx:input(name, x, y, config)    return self:add(name, "input",    x, y, config) end
@@ -8163,15 +9578,19 @@ function UI.new(buf)
     function ctx:sprite(name, x, y, config)    return self:add(name, "sprite",    x, y, config) end
     function ctx:multiline(name, x, y, config) return self:add(name, "multiline", x, y, config) end
     function ctx:label(name, x, y, config)     return self:multiline(name, x, y, config) end
+
     function ctx:container(name, x, y, w, h, config)
         return self:_insert(element.makeContainer(name, x, y, w, h, config))
     end
+
+
     function ctx:remove(name)
         if self.elements[name] then
             self.elements[name] = nil
             self.dirty = true
         end
     end
+
     function ctx:addToContainer(containerName, childName, childType, x, y, config)
         local con = self.elements[containerName]
         if not con or con.type ~= "container" then return nil end
@@ -8180,6 +9599,7 @@ function UI.new(buf)
         con.childrenDirty = true
         return child
     end
+
     function ctx:removeFromContainer(containerName, childName)
         local con = self.elements[containerName]
         if con and con.type == "container" then
@@ -8187,6 +9607,7 @@ function UI.new(buf)
             con.childrenDirty = true
         end
     end
+
     function ctx:update(name, config)
         local el = self.elements[name]
         if not el then return end
@@ -8200,6 +9621,7 @@ function UI.new(buf)
         end
         if el.type == "text" and config.text then el.w = #config.text end
     end
+
     function ctx:updateInContainer(containerName, childName, config)
         local con = self.elements[containerName]
         if not con or con.type ~= "container" then return end
@@ -8215,6 +9637,7 @@ function UI.new(buf)
         end
         if child.type == "text" and config.text then child.w = #config.text end
     end
+
     function ctx:get(name)
         local el = self.elements[name]
         if not el then return nil end
@@ -8233,6 +9656,8 @@ function UI.new(buf)
         end
         return nil
     end
+
+
     function ctx:getAbsolutePos(el, ox, oy)
         local tw, th = self.buf:getSize()
         local rx, ry = el.x + ox, el.y + oy
@@ -8252,9 +9677,13 @@ function UI.new(buf)
         end
         return rx, ry
     end
+
+
     function ctx:handleEvent(event, ox, oy)
         return events.handle(self, self.buf, event, ox or 0, oy or 0)
     end
+
+
     function ctx:draw(ox, oy, rowsToRestore)
         ox = ox or 0
         oy = oy or 0
@@ -8273,16 +9702,23 @@ function UI.new(buf)
         end
         return rowsToRestore
     end
+
     return ctx
 end
+
 UI.createContext = UI.new
+
 return UI
 ]=]
 paths["core.ui"] = "core/ui/init"
 sources["core.ui.render"] = [=[
 
+
 local require = ...
+
 local render = {}
+
+
 local function drawScrollbar(buf, x, topY, trackH, scrollOffset, totalRows, trackColor, thumbColor)
     if totalRows <= trackH then return end
     local thumbSize = math.max(1, math.floor(trackH * trackH / totalRows))
@@ -8293,6 +9729,7 @@ local function drawScrollbar(buf, x, topY, trackH, scrollOffset, totalRows, trac
         buf:drawText(x, topY + i, " ", "0", isThumb and thumbColor or trackColor)
     end
 end
+
 local function drawBorder(buf, el, rx, ry, bc, bg)
     if el.borderTop    then buf:drawText(rx, ry,            ("\131"):rep(el.w), bc, bg) end
     if el.borderBottom then buf:drawText(rx, ry + el.h - 1, ("\143"):rep(el.w), bg, bc) end
@@ -8307,6 +9744,8 @@ local function drawBorder(buf, el, rx, ry, bc, bg)
     if el.borderBottom and el.borderLeft  then buf:drawText(rx,           ry + el.h - 1, "\138", bg, bc) end
     if el.borderBottom and el.borderRight then buf:drawText(rx + el.w - 1, ry + el.h - 1, "\133", bg, bc) end
 end
+
+
 function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
     if el.sprite then
         local frame = el.sprite[el.config.frame or 1]
@@ -8316,11 +9755,13 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         end
         return
     end
+
     if el.type == "text" then
         buf:drawText(rx, ry, el.config.text or "", el.disabled and "8" or el.fore, el.back)
         rowsToRestore[ry] = true
         return
     end
+
     if el.type == "multiline" then
         local element = require("core.ui.element")
         local lines   = element.wrapText(el.config.text or "", el.w)
@@ -8341,6 +9782,7 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
         return
     end
+
     if el.type == "rect"   or el.type == "button" or el.type == "input"
     or el.type == "checkbox" or el.type == "dropdown" or el.type == "progress" then
         local isPressed = (pressedEl == el)
@@ -8348,7 +9790,9 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         local bg = el.disabled and "8" or (isPressed and el.borderColor or el.back)
         local fg = el.disabled and "7" or (isPressed and el.back or el.fore)
         local bc = (isPressed or isFocused) and el.fore or el.borderColor
+
         buf:drawRect(rx, ry, el.w, el.h, el.config.char or " ", fg, bg)
+
         if el.type == "progress" then
             local progress = math.max(0, math.min(1, el.config.progress or 0))
             local fillCol  = el.config.fillColor or "d"
@@ -8363,15 +9807,19 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
                 end
             end
         end
+
         drawBorder(buf, el, rx, ry, bc, bg)
+
         if el.type == "checkbox" then
             local mark = el.config.checked and "\7" or " "
             buf:drawText(rx + math.floor(el.w / 2), ry + math.floor(el.h / 2), mark, fg, bg)
         end
+
         if (el.type == "button" or el.type == "input") and el.config.text ~= nil then
             local text = el.config.text
             local ty   = ry + math.floor(el.h / 2)
             local tx
+
             if el.type == "input" then
                 tx = rx + 1
                 local cursor = isFocused and (math.floor(os.clock() * 2) % 2 == 0)
@@ -8384,8 +9832,10 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
             else
                 tx = rx + math.floor((el.w - #text) / 2)
             end
+
             buf:drawText(tx, ty, text, fg, bg)
         end
+
         if el.type == "dropdown" then
             local selected    = el.config.selectedIndex
             local displayText = tostring(
@@ -8396,6 +9846,7 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
             buf:drawText(rx + 1, ry + math.floor(el.h / 2), displayText, fg, bg)
             buf:drawText(rx + el.w - 1, ry + math.floor(el.h / 2),
                          el.isOpen and "\30" or "\31", fg, bg)
+
             if el.isOpen and el.config.options then
                 for i, opt in ipairs(el.config.options) do
                     local optY  = ry + el.h - 1 + i
@@ -8409,9 +9860,11 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
                 end
             end
         end
+
         for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
         return
     end
+
     if el.type == "list" then
         local options       = el.config.options or {}
         local scrollOffset  = el.config.scrollOffset or 0
@@ -8422,6 +9875,7 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         local itemW      = needsBar and (el.w - 1) or el.w
         local trackColor = el.config.scrollTrack or "8"
         local thumbColor = el.config.scrollThumb or el.fore
+
         buf:drawRect(rx, ry, el.w, el.h, " ", el.fore, el.back)
         for row = 0, el.h - 1 do
             local itemIdx = scrollOffset + row + 1
@@ -8442,6 +9896,7 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
         return
     end
+
     if el.type == "slider" then
         local sMin      = el.config.min or 0
         local sMax      = el.config.max or 100
@@ -8453,6 +9908,7 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         local thumbFore = el.config.thumbFore or el.back
         local thumbBack = el.config.thumbBack or (el.disabled and "8" or el.fore)
         local thumbChar = el.config.thumbChar or "\149"
+
         buf:drawRect(rx, ry, el.w, el.h, " ", el.fore, trackBg)
         if thumbPos > 0 then
             buf:drawRect(rx, ry, thumbPos, el.h, " ", fillColor, fillColor)
@@ -8468,15 +9924,20 @@ function render.drawEl(buf, el, rx, ry, pressedEl, focusedEl, rowsToRestore)
         for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
     end
 end
+
+
 function render.drawContainer(buf, el, rx, ry, ctx, rowsToRestore)
     buf:drawRect(rx, ry, el.w, el.h, " ", el.fore, el.back)
     drawBorder(buf, el, rx, ry, el.borderColor, el.back)
+
     if el.config.title and el.borderTop then
         local t  = " " .. el.config.title .. " "
         local tx = rx + math.floor((el.w - #t) / 2)
         buf:drawText(tx, ry, t, el.borderColor, el.back)
     end
+
     for i = 0, el.h - 1 do rowsToRestore[ry + i] = true end
+
     if el.childrenDirty then
         el.sortedChildren = {}
         for _, child in pairs(el.children) do
@@ -8485,19 +9946,23 @@ function render.drawContainer(buf, el, rx, ry, ctx, rowsToRestore)
         table.sort(el.sortedChildren, function(a, b) return a.z < b.z end)
         el.childrenDirty = false
     end
+
     local contentX = rx + (el.borderLeft and 1 or 0)
     local contentY = ry + (el.borderTop  and 1 or 0)
     local contentH = el.h - (el.borderTop  and 1 or 0) - (el.borderBottom and 1 or 0)
     local contentW = el.w - (el.borderLeft and 1 or 0) - (el.borderRight  and 1 or 0)
     local scrollY  = el.scrollOffset or 0
+
     local maxChildBottom = 0
     for _, child in pairs(el.children) do
         local b = child.y + child.h
         if b > maxChildBottom then maxChildBottom = b end
     end
+
     local needsBar   = maxChildBottom > contentH
     local trackColor = el.config.scrollTrack or "8"
     local thumbColor = el.config.scrollThumb or el.fore
+
     for _, child in ipairs(el.sortedChildren) do
         if child.visible then
             local childRY = contentY + child.y - scrollY
@@ -8509,11 +9974,13 @@ function render.drawContainer(buf, el, rx, ry, ctx, rowsToRestore)
             end
         end
     end
+
     if needsBar then
         drawScrollbar(buf, contentX + contentW - 1, contentY, contentH,
                       scrollY, maxChildBottom, trackColor, thumbColor)
     end
 end
+
 return render
 ]=]
 paths["core.ui.render"] = "core/ui/render"

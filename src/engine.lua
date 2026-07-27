@@ -594,9 +594,10 @@ local function updateFrame()
     local sleepTime = math.max(0, config.frameTime - workTime)
 
     local t = os.startTimer(sleepTime)
-    repeat
+    while true do
         local _, tid = os.pullEvent("timer")
-    until tid == t
+        if tid == t then break end
+    end
 end
 
 -- ============================================================================
