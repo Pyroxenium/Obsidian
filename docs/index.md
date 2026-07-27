@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: /guides/engine_quickstart
+      link: /guides/getting_started
     - theme: alt
       text: API Reference
       link: /api/

@@ -41,7 +41,7 @@ export default defineConfig({
     },
     nav: [
       { text: 'Home', link: '/home' },
-      { text: 'Guides', link: '/guides/engine_quickstart' },
+      { text: 'Guides', link: '/guides/getting_started' },
       { text: 'API Reference', link: '/api/' },
     ],
     sidebar: {
@@ -49,6 +49,7 @@ export default defineConfig({
         {
           text: 'Guides',
           items: [
+            { text: 'Getting Started', link: '/guides/getting_started' },
             { text: 'Engine Quickstart', link: '/guides/engine_quickstart' },
             { text: 'ECS Guide', link: '/guides/ecs_guide' },
           ],

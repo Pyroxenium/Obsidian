@@ -57,8 +57,15 @@ Engine.setScene(scene)
 Engine.start()
 ```
 
+## Showcase
+
+![Obsidian showcase](https://pyroxenium.github.io/Obsidian/preview.gif)
+
 ## Where to go next
 
-- [Engine Quickstart](/guides/engine_quickstart) walks through a first project
+- [Getting Started](/guides/getting_started) covers installation and builds a
+  small first game
+- [Engine Quickstart](/guides/engine_quickstart) introduces common engine
+  patterns
 - [ECS Guide](/guides/ecs_guide) explains entities, components and systems
 - The [API Reference](/api/) documents every module, generated from the sources
